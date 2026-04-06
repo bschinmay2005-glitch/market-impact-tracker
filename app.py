@@ -1,35 +1,38 @@
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
-import pandas as pd
 from datetime import datetime
+import re
 
 # --- CONFIGURATION ---
 NTFY_TOPIC = "chinmay_market_shaker_2026" 
 
-# Pure Directional Sentiment (Market Language)
-BULLISH_INDICATORS = ["SURGE", "JUMP", "PROFIT", "RECORDS", "GROWTH", "ACQUIRES", "BULLISH", "UP", "GAINS", "RECOVERY", "STIMULUS", "DIVIDEND", "RECORD", "BEATS", "HIKE"]
-BEARISH_INDICATORS = ["CRASH", "PLUNGE", "LOSS", "DEBT", "FALL", "SLUMP", "BEARISH", "DOWN", "WAR", "SANCTION", "INFLATION", "DEFAULT", "LAYOFF", "DROPS", "CRUDE", "TARIFF"]
+# Broadened to capture geopolitical moves that affect the market
+BULLISH_INDICATORS = ["SURGE", "JUMP", "PROFIT", "RECORDS", "GROWTH", "ACQUIRES", "UP", "GAINS", "STIMULUS", "DIVIDEND", "BEATS", "RECOVERY"]
+BEARISH_INDICATORS = ["CRASH", "PLUNGE", "LOSS", "DEBT", "FALL", "SLUMP", "DOWN", "WAR", "SANCTION", "INFLATION", "DEFAULT", "LAYOFF", "DROPS", "SCRAMBLES", "AMIDST"]
+# Entities and context words that make news "Market-Related"
+MARKET_ENTITIES = ["RBI", "NIFTY", "SENSEX", "FED", "HDFC", "RELIANCE", "ADANI", "TATA", "SEBI", "IPO", "NSE", "NASDAQ", "GDP", "BILLION", "TRILLION", "UAE", "IRAN", "USA", "INDIA", "OIL", "GOLD"]
 
-# The "High Volatility" Entities
-MARKET_ENTITIES = ["RBI", "NIFTY", "SENSEX", "FED", "HDFC", "RELIANCE", "ADANI", "TATA", "SEBI", "IPO", "NSE", "NASDAQ", "GDP"]
-
-# --- CRASH-PROOF NOTIFICATION SYSTEM ---
+# --- THE "SAFE" NOTIFICATION FUNCTION ---
 def send_ntfy_push(headline, link, impact_type):
-    # No emojis in Title = No 'latin-1' error. 
-    # Emojis go in Tags which are handled differently by the server.
-    title_text = "MARKET IMPACT: POSITIVE" if impact_type == "bullish" else "MARKET IMPACT: NEGATIVE"
-    tags = "rocket,chart_with_upwards_trend" if impact_type == "bullish" else "chart_with_downwards_trend,warning"
+    # REMOVE ALL EMOJIS from the string to prevent latin-1 errors
+    # This regex strips out everything except standard text/numbers
+    clean_headline = re.sub(r'[^\x00-\x7f]',r'', headline)
+    
+    title_text = "MARKET ALERT: POSITIVE" if impact_type == "bullish" else "MARKET ALERT: NEGATIVE"
+    
+    # We use simple text tags instead of emoji icons to be 100% safe
+    safe_tags = "success,chart" if impact_type == "bullish" else "warning,skull"
     
     try:
         requests.post(
             f"https://ntfy.sh/{NTFY_TOPIC}",
-            data=headline.encode('utf-8'),
+            data=clean_headline.encode('utf-8'),
             headers={
                 "Title": title_text,
                 "Click": link,
                 "Priority": "5", 
-                "Tags": tags
+                "Tags": safe_tags
             },
             timeout=5
         )
@@ -41,14 +44,11 @@ st.set_page_config(page_title="High-Impact Market Tracker", layout="wide")
 st.markdown("""
     <style>
     .main { background-color: #0e1117; color: #ffffff; }
-    .news-card { padding: 22px; border-radius: 12px; margin-bottom: 25px; background-color: #161b22; border: 1px solid #30363d; transition: 0.3s; }
-    
-    /* Strong Visual Indicators for Market Direction */
-    .positive-impact { border-left: 10px solid #28a745; border-top: 1px solid #28a745; box-shadow: 0px 4px 15px rgba(40, 167, 69, 0.1); }
-    .negative-impact { border-left: 10px solid #dc3545; border-top: 1px solid #dc3545; box-shadow: 0px 4px 15px rgba(220, 53, 69, 0.1); }
-    
-    .badge-pos { background-color: #28a745; color: white; padding: 4px 12px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; }
-    .badge-neg { background-color: #dc3545; color: white; padding: 4px 12px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; }
+    .news-card { padding: 22px; border-radius: 12px; margin-bottom: 25px; background-color: #161b22; border: 1px solid #30363d; }
+    .positive-impact { border-left: 10px solid #28a745; border-top: 1px solid #28a745; }
+    .negative-impact { border-left: 10px solid #dc3545; border-top: 1px solid #dc3545; }
+    .badge-pos { background-color: #28a745; color: white; padding: 4px 12px; border-radius: 6px; font-weight: bold; font-size: 0.75rem; }
+    .badge-neg { background-color: #dc3545; color: white; padding: 4px 12px; border-radius: 6px; font-weight: bold; font-size: 0.75rem; }
     .time-meta { color: #8899ac; font-size: 0.85rem; margin-left: 12px; }
     </style>
     """, unsafe_allow_html=True)
@@ -72,8 +72,7 @@ def news_dashboard():
             r = requests.get(url, headers=headers, timeout=10)
             soup = BeautifulSoup(r.content, 'xml')
             
-            # Scanning top 30 most recent stories
-            for entry in soup.find_all('url')[:30]: 
+            for entry in soup.find_all('url')[:40]: # Checking more stories
                 news_tag = entry.find('news:news')
                 if not news_tag: continue
                 
@@ -82,20 +81,18 @@ def news_dashboard():
                 pub_date = news_tag.find('news:publication_date').text
                 img_url = entry.find('image:loc').text if entry.find('image:loc') else "https://via.placeholder.com/150"
                 
-                # Relative Time Logic
                 dt = datetime.fromisoformat(pub_date.replace('Z', '+00:00'))
                 diff = datetime.now(dt.tzinfo) - dt
                 s = diff.total_seconds()
                 clean_time = f"{int(s//60)}m ago" if s < 3600 else f"{int(s//3600)}h ago" if s < 86400 else dt.strftime("%b %d")
 
-                # --- VOLATILITY FILTER ---
                 title_up = title.upper()
                 is_bullish = any(word in title_up for word in BULLISH_INDICATORS)
                 is_bearish = any(word in title_up for word in BEARISH_INDICATORS)
                 is_entity = any(word in title_up for word in MARKET_ENTITIES)
 
-                # TRIGGER: Only show if an Entity is moving in a clear Direction
-                if is_entity and (is_bullish or is_bearish):
+                # TRIGGER: Entity + Direction OR just a very high-impact geopolitical word
+                if (is_entity and (is_bullish or is_bearish)) or ("WAR" in title_up) or ("CRISIS" in title_up):
                     found_impact = True
                     impact_direction = "bullish" if is_bullish else "bearish"
                     
@@ -103,25 +100,24 @@ def news_dashboard():
                         send_ntfy_push(title, link, impact_direction)
                         st.session_state.seen_headlines.add(title)
 
-                    # UI Logic
                     card_class = "positive-impact" if is_bullish else "negative-impact"
-                    badge_html = '<span class="badge-pos">📈 POSITIVE IMPACT</span>' if is_bullish else '<span class="badge-neg">📉 NEGATIVE IMPACT</span>'
+                    badge_text = "📈 POSITIVE IMPACT" if is_bullish else "📉 NEGATIVE IMPACT"
+                    badge_class = "badge-pos" if is_bullish else "badge-neg"
 
                     st.markdown(f'''
                         <div class="news-card {card_class}">
                             <div style="display: flex; gap: 20px; align-items: center;">
-                                <div style="flex: 1;"><img src="{img_url}" style="width: 100%; border-radius: 8px; object-fit: cover; max-height: 120px;"></div>
+                                <div style="flex: 1;"><img src="{img_url}" style="width: 100%; border-radius: 8px;"></div>
                                 <div style="flex: 3;">
-                                    {badge_html} <span class="time-meta">{provider} • {clean_time}</span>
-                                    <h3 style="margin: 12px 0; color: white; font-size: 1.2rem;">{title}</h3>
+                                    <span class="{badge_class}">{badge_text}</span> <span class="time-meta">{provider} • {clean_time}</span>
+                                    <h3 style="margin: 12px 0; color: white;">{title}</h3>
                                     <a href="{link}" target="_blank" style="text-decoration: none;">
-                                        <button style="background: #30363d; color: white; border: 1px solid #444c56; padding: 6px 18px; border-radius: 6px; cursor: pointer; font-weight: 600;">Trade Analysis</button>
+                                        <button style="background: #30363d; color: white; border: 1px solid #444c56; padding: 8px 20px; border-radius: 6px; cursor: pointer;">View Impact Analysis</button>
                                     </a>
                                 </div>
                             </div>
                         </div>
                     ''', unsafe_allow_html=True)
-
         except: continue
     
     if not found_impact:
