@@ -48,9 +48,9 @@ if 'seen_headlines' not in st.session_state:
 @st.fragment(run_every=60)
 def news_dashboard():
     sources = {
-        "Moneycontrol": "https://www.moneycontrol.com/news/sitemap/sitemap-news.xml",
-        "Livemint": "https://www.livemint.com/sitemap/news.xml",
-        "Economic Times": "https://economictimes.indiatimes.com/sitemap_news.xml"
+        "Moneycontrol Latest": "https://www.moneycontrol.com/news/news-sitemap.xml", 
+        "Livemint Latest": "https://www.livemint.com/sitemap/news.xml",
+        "ET Market": "https://economictimes.indiatimes.com/markets/sitemap.xml"
     }
     
     data = []
