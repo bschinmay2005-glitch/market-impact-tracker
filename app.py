@@ -11,7 +11,7 @@ st.markdown("""
     .main { background-color: #0e1117; color: #ffffff; }
     .stHeader { font-family: 'Serif'; }
     </style>
-    """, unsafe_content_type=True)
+    """, unsafe_allow_html=True) # <--- Notice the change to unsafe_allow_html
 
 st.title("🏛️ Market-Moving News Archive")
 st.subheader("Real-time filtering: Moneycontrol | Livemint | ET")
