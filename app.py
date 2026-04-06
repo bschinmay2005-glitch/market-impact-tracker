@@ -14,7 +14,8 @@ MARKET_ENTITIES = ["RBI", "NIFTY", "SENSEX", "FED", "HDFC", "RELIANCE", "ADANI",
 
 # --- NOTIFICATION FUNCTION ---
 def send_ntfy_push(headline, link, impact_type):
-    emoji = "🚀" if impact_type == "bullish" else "📉" if impact_type == "bearish" else "📢"
+    # Fixed: Removed emojis from the Title to prevent 'latin-1' encoding errors
+    title_text = "Bullish Market Alert" if impact_type == "bullish" else "Bearish Market Alert"
     tags = "chart_with_upwards_trend" if impact_type == "bullish" else "chart_with_downwards_trend"
     
     try:
@@ -22,7 +23,7 @@ def send_ntfy_push(headline, link, impact_type):
             f"https://ntfy.sh/{NTFY_TOPIC}",
             data=headline.encode('utf-8'),
             headers={
-                "Title": f"{emoji} Market Impact Alert",
+                "Title": title_text,
                 "Click": link,
                 "Priority": "5", 
                 "Tags": tags
@@ -34,23 +35,20 @@ def send_ntfy_push(headline, link, impact_type):
 
 # --- UI SETUP ---
 st.set_page_config(page_title="Market Impact Tracker", layout="wide")
+
+# Fixed the double markdown error here
 st.markdown("""
-    st.markdown("""
     <style>
     .main { background-color: #0e1117; color: #ffffff; }
     .news-card { padding: 20px; border-radius: 12px; margin-bottom: 20px; background-color: #161b22; border: 1px solid #30363d; }
     
-    /* Green highlight for Positive news */
     .bullish-card { border-left: 8px solid #28a745; background-color: #101c12; border-top: 1px solid #28a745; }
-    
-    /* Red highlight for Negative news */
     .bearish-card { border-left: 8px solid #dc3545; background-color: #1c1010; border-top: 1px solid #dc3545; }
     
     .badge-green { background-color: #28a745; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 0.7rem; }
     .badge-red { background-color: #dc3545; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 0.7rem; }
     .time-stamp { color: #8899ac; font-size: 0.8rem; }
     </style>
-    """, unsafe_allow_html=True)
     """, unsafe_allow_html=True)
 
 st.title("🏛️ Live Market Archive")
@@ -93,7 +91,6 @@ def news_dashboard():
                 is_bearish = any(word in title_up for word in BEARISH_WORDS)
                 has_entity = any(word in title_up for word in MARKET_ENTITIES)
 
-                # Only highlight if it's a Market Entity + a Sentiment word
                 if has_entity and (is_bullish or is_bearish):
                     found_any = True
                     impact_type = "bullish" if is_bullish else "bearish"
@@ -106,7 +103,8 @@ def news_dashboard():
                     card_class = "bullish-card" if is_bullish else "bearish-card"
                     badge = f'<span class="badge-green">POSITIVE IMPACT</span>' if is_bullish else f'<span class="badge-red">NEGATIVE IMPACT</span>'
 
-                    st.markdown(f'<div class="card {card_class}">', unsafe_allow_html=True)
+                    # Fixed the card div class
+                    st.markdown(f'<div class="news-card {card_class}">', unsafe_allow_html=True)
                     col1, col2 = st.columns([1, 4])
                     with col1:
                         st.image(img_url if img_url else "https://via.placeholder.com/150", use_container_width=True)
