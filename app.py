@@ -25,17 +25,20 @@ BEARISH_WORDS = ["CRASH", "PLUNGE", "LOSS", "DEBT", "FALL", "SLUMP", "BEARISH", 
 MARKET_ENTITIES = ["RBI", "FED", "RELIANCE", "HDFC", "ADANI", "TATA", "NIFTY", "SENSEX", "IPO", "STOCK", "NSE", "NASDAQ", "BANK", "GDP"]
 # --- UPGRADED NOTIFICATION FUNCTION ---
 def send_ntfy_push(headline, link, is_super=False):
-    # If super impact, use Priority 5 (Max) and Fire emoji
+    # We keep emojis in the 'Tags' and 'Priority' instead of the Title
+    # This prevents the 'latin-1' encoding crash
     priority = "5" if is_super else "4"
     tags = "fire,warning" if is_super else "moneybag,warning"
-    title_text = "🔥 CRITICAL IMPACT" if is_super else "Market Impact Detected"
+    
+    # We use a plain text Title to stay safe with the server
+    title_text = "CRITICAL MARKET IMPACT" if is_super else "Market Impact Detected"
     
     try:
         requests.post(
             f"https://ntfy.sh/{NTFY_TOPIC}",
-            data=headline.encode('utf-8'),
+            data=headline.encode('utf-8'), # Headline is safely encoded here
             headers={
-                "Title": title_text,
+                "Title": title_text, 
                 "Click": link,
                 "Priority": priority, 
                 "Tags": tags
@@ -43,7 +46,8 @@ def send_ntfy_push(headline, link, is_super=False):
             timeout=5
         )
     except Exception as e:
-        st.error(f"Notification System Error: {e}")
+        # This will now print to your Streamlit logs if there is a real network issue
+        print(f"Notification System Error: {e}")
 
 # --- UI SETUP ---
 st.set_page_config(page_title="Market Impact Tracker", layout="wide")
