@@ -6,9 +6,27 @@ from datetime import datetime
 
 # --- CONFIGURATION ---
 NTFY_TOPIC = "chinmay_market_shaker_2026" 
-IMPACT_KEYWORDS = ["RBI", "FED", "RELIANCE", "HDFC", "ADANI", "IPO", "MERGER", "INDIA", "MARKET", "STOCK", "RBI", "US", "TRUMP", "WAR", "OIL", "TARIFF", "GLOBAL", "STRAIT", "GOLD", "SILVER", "BILLION", "TRILLION", "NSE", "NASDAQ", "FEDERAL", "RESERVE", "FII", "DII", "BANK", "RETURNS", "ELECTION", "CRORE",
+IMPACT_KEYWORDS = ["RBI", "FED", "RELIANCE", "HDFC", "ADANI", "IPO", "MERGER", "INDIA", "MARKET", "STOCK", "US", "TRUMP", "WAR", "OIL", "TARIFF", "GLOBAL", "STRAIT", "GOLD", "SILVER", "BILLION", "TRILLION", "NSE", "NASDAQ", "FEDERAL", "RESERVE", "FII", "DII", "BANK", "RETURNS", "ELECTION", "CRORE",
     "ACQUISITION", "DEFAULT", "INFLATION", "GDP", "NIFTY", "SENSEX",
-    "CRUDE", "WAR", "SANCTION", "QUARTERLY RESULTS"]
+    "CRUDE", "SANCTION", "QUARTERLY RESULTS"]
+
+# --- NEW: UPGRADED NOTIFICATION FUNCTION ---
+# We put this here so the app knows how to send alerts before the dashboard starts
+def send_ntfy_push(headline, link):
+    try:
+        requests.post(
+            f"https://ntfy.sh/{NTFY_TOPIC}",
+            data=headline.encode('utf-8'),
+            headers={
+                "Title": "🚨 Market Impact Detected",
+                "Click": link,
+                "Priority": "5", 
+                "Tags": "moneybag,warning"
+            },
+            timeout=5
+        )
+    except Exception as e:
+        st.error(f"Notification Error: {e}")
 
 # --- UI SETUP ---
 st.set_page_config(page_title="Market Impact Tracker", layout="wide")
@@ -52,17 +70,20 @@ def news_dashboard():
                 pub_date = news_tag.find('news:publication_date').text
                 link = entry.find('loc').text
                 
-                # Extract Image if available
                 img_tag = entry.find('image:loc')
                 img_url = img_tag.text if img_tag else None
                 
-                # Format the Date for "Old Money" look
-                # Example: 2026-04-06T20:20:15 -> April 06, 08:20 PM
                 dt = datetime.fromisoformat(pub_date.replace('Z', '+00:00'))
                 clean_time = dt.strftime("%b %d, %I:%M %p")
 
                 if any(word in title.upper() for word in IMPACT_KEYWORDS):
                     found_any = True
+                    
+                    # --- NEW: TRIGGER THE NOTIFICATION ---
+                    # This checks if we've already alerted you about this specific news
+                    if title not in st.session_state.seen_headlines:
+                        send_ntfy_push(title, link)
+                        st.session_state.seen_headlines.add(title)
                     
                     # Display the News Card
                     with st.container():
