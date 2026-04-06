@@ -19,7 +19,7 @@ st.subheader("Real-time filtering: Moneycontrol | Livemint | ET")
 # 2. The Filter Logic (Your "No Small News" Guard)
 # Edit this list to include/exclude what you care about
 IMPACT_KEYWORDS = [
-    "RBI", "FED", "RELIANCE", "HDFC", "ADANI", "IPO", "MERGER", "INDIA", "MARKET", "STOCK", "RBI", "US", "TRUMP", "WAR", "OIL", "TARIFF", "GLOBAL", "STRAIT", "GOLD", "SILVER", "BILLION", "TRILLION", "NSE", "NASDAQ", "FEDERAL", "RESERVE",
+    "RBI", "FED", "RELIANCE", "HDFC", "ADANI", "IPO", "MERGER", "INDIA", "MARKET", "STOCK", "RBI", "US", "TRUMP", "WAR", "OIL", "TARIFF", "GLOBAL", "STRAIT", "GOLD", "SILVER", "BILLION", "TRILLION", "NSE", "NASDAQ", "FEDERAL", "RESERVE", "FII", "DII", "BANK", "RETURNS",
     "ACQUISITION", "DEFAULT", "INFLATION", "GDP", "NIFTY", "SENSEX",
     "CRUDE", "WAR", "SANCTION", "QUARTERLY RESULTS"
 ]
