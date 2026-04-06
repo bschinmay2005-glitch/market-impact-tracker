@@ -11,16 +11,13 @@ IMPACT_KEYWORDS = ["RBI", "FED", "RELIANCE", "HDFC", "ADANI", "IPO", "MERGER", "
     "CRUDE", "SANCTION", "QUARTERLY RESULTS"]
 
 # --- NEW: UPGRADED NOTIFICATION FUNCTION ---
-# We put this here so the app knows how to send alerts before the dashboard starts
 def send_ntfy_push(headline, link):
     try:
-        # We add .encode('utf-8') to the headline AND ensure 
-        # the request headers know it is UTF-8
         requests.post(
             f"https://ntfy.sh/{NTFY_TOPIC}",
-            data=headline.encode('utf-8'), # This is the magic fix
+            data=headline.encode('utf-8'),
             headers={
-                "Title": "Market Impact Detected", # Removed emoji from Title to be safe
+                "Title": "Market Impact Detected",
                 "Click": link,
                 "Priority": "5", 
                 "Tags": "moneybag,warning"
@@ -28,7 +25,6 @@ def send_ntfy_push(headline, link):
             timeout=5
         )
     except Exception as e:
-        # This will show a cleaner error if something else happens
         st.error(f"Notification System Error: {e}")
 
 # --- UI SETUP ---
@@ -76,19 +72,30 @@ def news_dashboard():
                 img_tag = entry.find('image:loc')
                 img_url = img_tag.text if img_tag else None
                 
+                # --- MODIFIED: RELATIVE TIME LOGIC ---
                 dt = datetime.fromisoformat(pub_date.replace('Z', '+00:00'))
-                clean_time = dt.strftime("%b %d, %I:%M %p")
+                now = datetime.now(dt.tzinfo)
+                diff = now - dt
+                seconds = diff.total_seconds()
+
+                if seconds < 60:
+                    clean_time = f"{int(seconds)}s ago"
+                elif seconds < 3600:
+                    clean_time = f"{int(seconds // 60)}m ago"
+                elif seconds < 86400:
+                    clean_time = f"{int(seconds // 3600)}h ago"
+                else:
+                    # Older than 24 hours: Show full date
+                    clean_time = dt.strftime("%b %d, %I:%M %p")
+                # -------------------------------------
 
                 if any(word in title.upper() for word in IMPACT_KEYWORDS):
                     found_any = True
                     
-                    # --- NEW: TRIGGER THE NOTIFICATION ---
-                    # This checks if we've already alerted you about this specific news
                     if title not in st.session_state.seen_headlines:
                         send_ntfy_push(title, link)
                         st.session_state.seen_headlines.add(title)
                     
-                    # Display the News Card
                     with st.container():
                         st.markdown(f"---")
                         col1, col2 = st.columns([1, 3])
