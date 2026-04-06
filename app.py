@@ -12,7 +12,17 @@ IMPACT_KEYWORDS = ["RBI", "FED", "RELIANCE", "HDFC", "ADANI", "IPO", "MERGER", "
 
 # Keywords that trigger the "High Impact" glow and priority notifications
 SUPER_IMPACT = ["WAR", "RBI", "CRASH", "BREAKING", "URGENT", "LEVY", "SURGE", "PLUNGE", "ISRAEL", "IRAN"]
+# --- CONFIGURATION ---
+NTFY_TOPIC = "chinmay_market_shaker_2026" 
 
+# Things that move the price UP
+BULLISH_WORDS = ["SURGE", "JUMP", "PROFIT", "GROWTH", "ACQUIRES", "BULLISH", "UP", "GAINS", "RECOVERY", "STIMULUS", "DIVIDEND", "RECORD", "BEATS"]
+
+# Things that move the price DOWN
+BEARISH_WORDS = ["CRASH", "PLUNGE", "LOSS", "DEBT", "FALL", "SLUMP", "BEARISH", "DOWN", "WAR", "SANCTION", "INFLATION", "DEFAULT", "LAYOFF", "DROPS"]
+
+# The "Who" - only alert if these are mentioned
+MARKET_ENTITIES = ["RBI", "FED", "RELIANCE", "HDFC", "ADANI", "TATA", "NIFTY", "SENSEX", "IPO", "STOCK", "NSE", "NASDAQ", "BANK", "GDP"]
 # --- UPGRADED NOTIFICATION FUNCTION ---
 def send_ntfy_push(headline, link, is_super=False):
     # If super impact, use Priority 5 (Max) and Fire emoji
@@ -38,39 +48,22 @@ def send_ntfy_push(headline, link, is_super=False):
 # --- UI SETUP ---
 st.set_page_config(page_title="Market Impact Tracker", layout="wide")
 st.markdown("""
+    st.markdown("""
     <style>
     .main { background-color: #0e1117; color: #ffffff; }
+    .news-card { padding: 20px; border-radius: 12px; margin-bottom: 20px; background-color: #161b22; border: 1px solid #30363d; }
     
-    /* Standard Card Style */
-    .news-card { 
-        border: 1px solid #30363d; 
-        padding: 20px; 
-        border-radius: 12px; 
-        margin-bottom: 25px; 
-        background-color: #161b22; 
-    }
+    /* Green highlight for Positive news */
+    .bullish-card { border-left: 8px solid #28a745; background-color: #101c12; border-top: 1px solid #28a745; }
     
-    /* HIGH IMPACT Card Style (Gold Glow) */
-    .high-impact-card { 
-        border: 2px solid #D4AF37; 
-        padding: 20px; 
-        border-radius: 12px; 
-        margin-bottom: 25px; 
-        background-color: #1c1910; 
-        box-shadow: 0px 0px 20px rgba(212, 175, 55, 0.2);
-    }
+    /* Red highlight for Negative news */
+    .bearish-card { border-left: 8px solid #dc3545; background-color: #1c1010; border-top: 1px solid #dc3545; }
     
-    .time-stamp { color: #8899ac; font-size: 0.85rem; }
-    .impact-badge { 
-        background-color: #D4AF37; 
-        color: #000000; 
-        padding: 2px 10px; 
-        border-radius: 4px; 
-        font-weight: bold; 
-        font-size: 0.75rem;
-        margin-right: 10px;
-    }
+    .badge-green { background-color: #28a745; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 0.7rem; }
+    .badge-red { background-color: #dc3545; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 0.7rem; }
+    .time-stamp { color: #8899ac; font-size: 0.8rem; }
     </style>
+    """, unsafe_allow_html=True)
     """, unsafe_allow_html=True)
 
 st.title("🏛️ Live Market Archive")
