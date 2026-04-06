@@ -3,31 +3,35 @@ import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 
-# 1. UI Setup
-st.set_page_config(page_title="Market Impact Tracker", layout="wide")
+# --- CONFIGURATION ---
+TELEGRAM_TOKEN = "YOUR_BOT_TOKEN_HERE"
+CHAT_ID = "YOUR_CHAT_ID_HERE"
 
-# Custom CSS for the "Old Money" Dark Theme
-st.markdown("""
-    <style>
-    .main { background-color: #0e1117; color: #ffffff; }
-    .stHeader { font-family: 'Serif'; color: #D4AF37; }
-    div[data-testid="stExpander"] { border: 1px solid #D4AF37; background-color: #161b22; }
-    </style>
-    """, unsafe_allow_html=True)
-
-st.title("🏛️ Market-Moving News Archive")
-st.subheader("Real-time filtering: Moneycontrol | Livemint | ET")
-
-# 2. Filter Logic
 IMPACT_KEYWORDS = [
-    "RBI", "FED", "RELIANCE", "HDFC", "ADANI", "IPO", "MERGER", "INDIA", "MARKET", 
-    "STOCK", "US", "TRUMP", "WAR", "OIL", "TARIFF", "GLOBAL", "STRAIT", "GOLD", 
-    "SILVER", "BILLION", "TRILLION", "NSE", "NASDAQ", "FEDERAL", "RESERVE", "FII", 
-    "DII", "BANK", "RETURNS", "ELECTION", "CRORE", "ACQUISITION", "DEFAULT", 
-    "INFLATION", "GDP", "NIFTY", "SENSEX", "CRUDE", "SANCTION", "QUARTERLY RESULTS"
+    "RBI", "FED", "RELIANCE", "HDFC", "ADANI", "IPO", "MERGER", "INDIA", "MARKET", "STOCK", "RBI", "US", "TRUMP", "WAR", "OIL", "TARIFF", "GLOBAL", "STRAIT", "GOLD", "SILVER", "BILLION", "TRILLION", "NSE", "NASDAQ", "FEDERAL", "RESERVE", "FII", "DII", "BANK", "RETURNS", "ELECTION", "CRORE",
+    "ACQUISITION", "DEFAULT", "INFLATION", "GDP", "NIFTY", "SENSEX",
+    "CRUDE", "WAR", "SANCTION", "QUARTERLY RESULTS"
 ]
 
-# 3. The "Silent" Background Monitor (The Fragment)
+# --- HELPER FUNCTIONS ---
+def send_telegram_push(message):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}
+    try:
+        requests.post(url, data=payload)
+    except:
+        pass
+
+# --- UI SETUP ---
+st.set_page_config(page_title="Market Impact Tracker", layout="wide")
+st.title("🏛️ Market-Moving News Archive")
+st.subheader("Live Monitoring: Moneycontrol | Livemint | ET")
+
+# --- DATA PROCESSING ---
+# We use st.cache_resource to remember what we've already sent to your phone
+if 'seen_headlines' not in st.session_state:
+    st.session_state.seen_headlines = set()
+
 @st.fragment(run_every=60)
 def news_dashboard():
     sources = {
@@ -39,33 +43,32 @@ def news_dashboard():
     data = []
     headers = {'User-Agent': 'Mozilla/5.0'}
     
-    # Create a container so we can clear and update it
-    container = st.empty()
-    
-    with container.container():
-        for provider, url in sources.items():
-            try:
-                r = requests.get(url, headers=headers, timeout=10)
-                soup = BeautifulSoup(r.content, 'xml')
+    for provider, url in sources.items():
+        try:
+            r = requests.get(url, headers=headers, timeout=10)
+            soup = BeautifulSoup(r.content, 'xml')
+            for entry in soup.find_all('news:news')[:15]: 
+                title = entry.find('news:title').text
+                link = entry.parent.find('loc').text
                 
-                # Fetching latest 20
-                for entry in soup.find_all('news:news')[:20]: 
-                    title = entry.find('news:title').text
-                    link = entry.parent.find('loc').text
+                # Check for Impact
+                if any(word in title.upper() for word in IMPACT_KEYWORDS):
+                    # PUSH NOTIFICATION LOGIC
+                    if title not in st.session_state.seen_headlines:
+                        alert_text = f"🚨 *MARKET MOVE*\n\n{title}\n\n[Read More]({link})"
+                        send_telegram_push(alert_text)
+                        st.session_state.seen_headlines.add(title)
                     
-                    if any(word in title.upper() for word in IMPACT_KEYWORDS):
-                        data.append({"Source": provider, "Headline": title, "URL": link})
-            except:
-                st.warning(f"Connection slow for {provider}...")
+                    data.append({"Source": provider, "Headline": title, "URL": link})
+        except:
+            continue
 
-        if data:
-            news_df = pd.DataFrame(data).drop_duplicates(subset=['Headline'])
-            for _, row in news_df.iterrows():
-                with st.expander(f"📌 {row['Source']}: {row['Headline']}", expanded=True):
-                    st.write(f"High-impact movement detected.")
-                    st.link_button("Open Source Report", row['URL'])
-        else:
-            st.info("Monitoring... No high-impact news detected in this cycle.")
+    if data:
+        news_df = pd.DataFrame(data).drop_duplicates(subset=['Headline'])
+        for _, row in news_df.iterrows():
+            with st.expander(f"📌 {row['Source']}: {row['Headline']}", expanded=True):
+                st.link_button("Open Source Report", row['URL'])
+    else:
+        st.info("Monitoring... Next scan in 60 seconds.")
 
-# 4. Launch the Dashboard
 news_dashboard()
