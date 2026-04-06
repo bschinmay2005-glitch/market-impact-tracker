@@ -7,16 +7,17 @@ from datetime import datetime
 # --- CONFIGURATION ---
 NTFY_TOPIC = "chinmay_market_shaker_2026" 
 
-# These words represent "Movement"
 BULLISH_WORDS = ["SURGE", "JUMP", "PROFIT", "RECORDS", "GROWTH", "ACQUIRES", "BULLISH", "UP", "GAINS", "RECOVERY", "STIMULUS", "DIVIDEND"]
 BEARISH_WORDS = ["CRASH", "PLUNGE", "LOSS", "DEBT", "FALL", "SLUMP", "BEARISH", "DOWN", "WAR", "SANCTION", "INFLATION", "DEFAULT", "LAYOFF"]
-MARKET_ENTITIES = ["RBI", "NIFTY", "SENSEX", "FED", "HDFC", "RELIANCE", "ADANI", "TATA", "SEBI", "IPO"]
+MARKET_ENTITIES = ["RBI", "NIFTY", "SENSEX", "FED", "HDFC", "RELIANCE", "ADANI", "TATA", "SEBI", "IPO", "MARKET", "STOCK"]
 
-# --- NOTIFICATION FUNCTION ---
+# --- NOTIFICATION FUNCTION (CLEANED) ---
 def send_ntfy_push(headline, link, impact_type):
-    # Fixed: Removed emojis from the Title to prevent 'latin-1' encoding errors
-    title_text = "Bullish Market Alert" if impact_type == "bullish" else "Bearish Market Alert"
-    tags = "chart_with_upwards_trend" if impact_type == "bullish" else "chart_with_downwards_trend"
+    # Emojis in Title cause the latin-1 error. Use plain text here.
+    title_text = "Market Impact: Positive" if impact_type == "bullish" else "Market Impact: Negative" if impact_type == "bearish" else "Market News Alert"
+    
+    # Emojis are safe in Tags
+    tag_map = {"bullish": "rocket", "bearish": "chart_with_downwards_trend", "neutral": "newspaper"}
     
     try:
         requests.post(
@@ -25,8 +26,8 @@ def send_ntfy_push(headline, link, impact_type):
             headers={
                 "Title": title_text,
                 "Click": link,
-                "Priority": "5", 
-                "Tags": tags
+                "Priority": "4", 
+                "Tags": tag_map.get(impact_type, "newspaper")
             },
             timeout=5
         )
@@ -35,19 +36,17 @@ def send_ntfy_push(headline, link, impact_type):
 
 # --- UI SETUP ---
 st.set_page_config(page_title="Market Impact Tracker", layout="wide")
-
-# Fixed the double markdown error here
 st.markdown("""
     <style>
     .main { background-color: #0e1117; color: #ffffff; }
-    .news-card { padding: 20px; border-radius: 12px; margin-bottom: 20px; background-color: #161b22; border: 1px solid #30363d; }
-    
-    .bullish-card { border-left: 8px solid #28a745; background-color: #101c12; border-top: 1px solid #28a745; }
-    .bearish-card { border-left: 8px solid #dc3545; background-color: #1c1010; border-top: 1px solid #dc3545; }
-    
+    .news-card { padding: 20px; border-radius: 12px; margin-bottom: 20px; background-color: #161b22; border: 1px solid #30363d; min-height: 150px; }
+    .bullish-card { border-left: 8px solid #28a745; border-top: 1px solid #28a745; }
+    .bearish-card { border-left: 8px solid #dc3545; border-top: 1px solid #dc3545; }
+    .neutral-card { border-left: 8px solid #8899ac; }
     .badge-green { background-color: #28a745; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 0.7rem; }
     .badge-red { background-color: #dc3545; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 0.7rem; }
-    .time-stamp { color: #8899ac; font-size: 0.8rem; }
+    .badge-gray { background-color: #444c56; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 0.7rem; }
+    .time-stamp { color: #8899ac; font-size: 0.8rem; margin-left: 10px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -70,7 +69,7 @@ def news_dashboard():
             r = requests.get(url, headers=headers, timeout=10)
             soup = BeautifulSoup(r.content, 'xml')
             
-            for entry in soup.find_all('url')[:25]: 
+            for entry in soup.find_all('url')[:30]: 
                 news_tag = entry.find('news:news')
                 if not news_tag: continue
                 
@@ -85,36 +84,42 @@ def news_dashboard():
                 s = diff.total_seconds()
                 clean_time = f"{int(s//60)}m ago" if s < 3600 else f"{int(s//3600)}h ago" if s < 86400 else dt.strftime("%b %d")
 
-                # --- IMPACT DETECTION ENGINE ---
+                # --- NEW IMPACT DETECTION ---
                 title_up = title.upper()
                 is_bullish = any(word in title_up for word in BULLISH_WORDS)
                 is_bearish = any(word in title_up for word in BEARISH_WORDS)
                 has_entity = any(word in title_up for word in MARKET_ENTITIES)
 
-                if has_entity and (is_bullish or is_bearish):
+                # Show it if it matches an entity OR a movement word
+                if has_entity or is_bullish or is_bearish:
                     found_any = True
-                    impact_type = "bullish" if is_bullish else "bearish"
+                    impact_type = "bullish" if is_bullish else "bearish" if is_bearish else "neutral"
                     
                     if title not in st.session_state.seen_headlines:
                         send_ntfy_push(title, link, impact_type)
                         st.session_state.seen_headlines.add(title)
 
                     # UI Styling
-                    card_class = "bullish-card" if is_bullish else "bearish-card"
-                    badge = f'<span class="badge-green">POSITIVE IMPACT</span>' if is_bullish else f'<span class="badge-red">NEGATIVE IMPACT</span>'
+                    card_style = "bullish-card" if impact_type == "bullish" else "bearish-card" if impact_type == "bearish" else "neutral-card"
+                    badge = '<span class="badge-green">POSITIVE</span>' if impact_type == "bullish" else '<span class="badge-red">NEGATIVE</span>' if impact_type == "bearish" else '<span class="badge-gray">MARKET NEWS</span>'
 
-                    # Fixed the card div class
-                    st.markdown(f'<div class="news-card {card_class}">', unsafe_allow_html=True)
-                    col1, col2 = st.columns([1, 4])
-                    with col1:
-                        st.image(img_url if img_url else "https://via.placeholder.com/150", use_container_width=True)
-                    with col2:
-                        st.markdown(f"{badge} <span class='time-stamp'>{provider} • {clean_time}</span>", unsafe_allow_html=True)
-                        st.subheader(title)
-                        st.link_button("View Analysis", link)
-                    st.markdown('</div>', unsafe_allow_html=True)
+                    st.markdown(f'''
+                        <div class="news-card {card_style}">
+                            <div style="display: flex; gap: 20px;">
+                                <div style="flex: 1;"><img src="{img_url if img_url else "https://via.placeholder.com/150"}" style="width: 100%; border-radius: 8px;"></div>
+                                <div style="flex: 3;">
+                                    {badge} <span class="time-stamp">{provider} • {clean_time}</span>
+                                    <h3 style="margin-top: 10px; color: white;">{title}</h3>
+                                    <a href="{link}" target="_blank" style="text-decoration: none;"><button style="background: #30363d; color: white; border: 1px solid #8899ac; padding: 5px 15px; border-radius: 5px; cursor: pointer;">Read Full Story</button></a>
+                                </div>
+                            </div>
+                        </div>
+                    ''', unsafe_allow_html=True)
 
-        except: continue
-    if not found_any: st.info("Monitoring markets for high-impact moves...")
+        except Exception as e:
+            continue
+            
+    if not found_any:
+        st.info("Searching for market-moving updates...")
 
 news_dashboard()
