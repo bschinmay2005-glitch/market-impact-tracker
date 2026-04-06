@@ -12,10 +12,9 @@ BULLISH_WORDS = ["SURGE", "JUMP", "PROFIT", "RECORDS", "GROWTH", "ACQUIRES", "BU
 BEARISH_WORDS = ["CRASH", "PLUNGE", "LOSS", "DEBT", "FALL", "SLUMP", "BEARISH", "DOWN", "WAR", "SANCTION", "INFLATION", "DEFAULT", "LAYOFF"]
 MARKET_ENTITIES = ["RBI", "NIFTY", "SENSEX", "FED", "HDFC", "RELIANCE", "ADANI", "TATA", "SEBI", "IPO"]
 
-# --- NOTIFICATION FUNCTION (SAFE VERSION) ---
+# --- NOTIFICATION FUNCTION ---
 def send_ntfy_push(headline, link, impact_type):
-    # We remove emojis from the Title string to prevent 'latin-1' encoding errors
-    title_text = "Bullish Market Alert" if impact_type == "bullish" else "Bearish Market Alert"
+    emoji = "🚀" if impact_type == "bullish" else "📉" if impact_type == "bearish" else "📢"
     tags = "chart_with_upwards_trend" if impact_type == "bullish" else "chart_with_downwards_trend"
     
     try:
@@ -23,7 +22,7 @@ def send_ntfy_push(headline, link, impact_type):
             f"https://ntfy.sh/{NTFY_TOPIC}",
             data=headline.encode('utf-8'),
             headers={
-                "Title": title_text,
+                "Title": f"{emoji} Market Impact Alert",
                 "Click": link,
                 "Priority": "5", 
                 "Tags": tags
@@ -36,10 +35,9 @@ def send_ntfy_push(headline, link, impact_type):
 # --- UI SETUP ---
 st.set_page_config(page_title="Market Impact Tracker", layout="wide")
 st.markdown("""
+    st.markdown("""
     <style>
     .main { background-color: #0e1117; color: #ffffff; }
-    
-    /* Standard Card Base */
     .news-card { padding: 20px; border-radius: 12px; margin-bottom: 20px; background-color: #161b22; border: 1px solid #30363d; }
     
     /* Green highlight for Positive news */
@@ -52,6 +50,7 @@ st.markdown("""
     .badge-red { background-color: #dc3545; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 0.7rem; }
     .time-stamp { color: #8899ac; font-size: 0.8rem; }
     </style>
+    """, unsafe_allow_html=True)
     """, unsafe_allow_html=True)
 
 st.title("🏛️ Live Market Archive")
@@ -86,15 +85,7 @@ def news_dashboard():
                 dt = datetime.fromisoformat(pub_date.replace('Z', '+00:00'))
                 diff = datetime.now(dt.tzinfo) - dt
                 s = diff.total_seconds()
-                
-                if s < 60:
-                    clean_time = f"{int(s)}s ago"
-                elif s < 3600:
-                    clean_time = f"{int(s//60)}m ago"
-                elif s < 86400:
-                    clean_time = f"{int(s//3600)}h ago"
-                else:
-                    clean_time = dt.strftime("%b %d")
+                clean_time = f"{int(s//60)}m ago" if s < 3600 else f"{int(s//3600)}h ago" if s < 86400 else dt.strftime("%b %d")
 
                 # --- IMPACT DETECTION ENGINE ---
                 title_up = title.upper()
@@ -115,8 +106,7 @@ def news_dashboard():
                     card_class = "bullish-card" if is_bullish else "bearish-card"
                     badge = f'<span class="badge-green">POSITIVE IMPACT</span>' if is_bullish else f'<span class="badge-red">NEGATIVE IMPACT</span>'
 
-                    # Added "news-card" class back to ensure padding/borders work
-                    st.markdown(f'<div class="news-card {card_class}">', unsafe_allow_html=True)
+                    st.markdown(f'<div class="card {card_class}">', unsafe_allow_html=True)
                     col1, col2 = st.columns([1, 4])
                     with col1:
                         st.image(img_url if img_url else "https://via.placeholder.com/150", use_container_width=True)
