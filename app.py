@@ -14,11 +14,13 @@ IMPACT_KEYWORDS = ["RBI", "FED", "RELIANCE", "HDFC", "ADANI", "IPO", "MERGER", "
 # We put this here so the app knows how to send alerts before the dashboard starts
 def send_ntfy_push(headline, link):
     try:
+        # We add .encode('utf-8') to the headline AND ensure 
+        # the request headers know it is UTF-8
         requests.post(
             f"https://ntfy.sh/{NTFY_TOPIC}",
-            data=headline.encode('utf-8'),
+            data=headline.encode('utf-8'), # This is the magic fix
             headers={
-                "Title": "🚨 Market Impact Detected",
+                "Title": "Market Impact Detected", # Removed emoji from Title to be safe
                 "Click": link,
                 "Priority": "5", 
                 "Tags": "moneybag,warning"
@@ -26,7 +28,8 @@ def send_ntfy_push(headline, link):
             timeout=5
         )
     except Exception as e:
-        st.error(f"Notification Error: {e}")
+        # This will show a cleaner error if something else happens
+        st.error(f"Notification System Error: {e}")
 
 # --- UI SETUP ---
 st.set_page_config(page_title="Market Impact Tracker", layout="wide")
