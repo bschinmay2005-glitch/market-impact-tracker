@@ -10,19 +10,25 @@ IMPACT_KEYWORDS = ["RBI", "FED", "RELIANCE", "HDFC", "ADANI", "IPO", "MERGER", "
     "ACQUISITION", "DEFAULT", "INFLATION", "GDP", "NIFTY", "SENSEX",
     "CRUDE", "SANCTION", "QUARTERLY RESULTS"]
 
+# Keywords that trigger the "High Impact" glow and priority notifications
 SUPER_IMPACT = ["WAR", "RBI", "CRASH", "BREAKING", "URGENT", "LEVY", "SURGE", "PLUNGE", "ISRAEL", "IRAN"]
 
-# --- NEW: UPGRADED NOTIFICATION FUNCTION ---
-def send_ntfy_push(headline, link):
+# --- UPGRADED NOTIFICATION FUNCTION ---
+def send_ntfy_push(headline, link, is_super=False):
+    # If super impact, use Priority 5 (Max) and Fire emoji
+    priority = "5" if is_super else "4"
+    tags = "fire,warning" if is_super else "moneybag,warning"
+    title_text = "🔥 CRITICAL IMPACT" if is_super else "Market Impact Detected"
+    
     try:
         requests.post(
             f"https://ntfy.sh/{NTFY_TOPIC}",
             data=headline.encode('utf-8'),
             headers={
-                "Title": "Market Impact Detected",
+                "Title": title_text,
                 "Click": link,
-                "Priority": "5", 
-                "Tags": "moneybag,warning"
+                "Priority": priority, 
+                "Tags": tags
             },
             timeout=5
         )
@@ -34,8 +40,36 @@ st.set_page_config(page_title="Market Impact Tracker", layout="wide")
 st.markdown("""
     <style>
     .main { background-color: #0e1117; color: #ffffff; }
-    .news-card { border: 1px solid #D4AF37; padding: 15px; border-radius: 10px; margin-bottom: 20px; background-color: #161b22; }
-    .time-stamp { color: #8899ac; font-size: 0.8rem; }
+    
+    /* Standard Card Style */
+    .news-card { 
+        border: 1px solid #30363d; 
+        padding: 20px; 
+        border-radius: 12px; 
+        margin-bottom: 25px; 
+        background-color: #161b22; 
+    }
+    
+    /* HIGH IMPACT Card Style (Gold Glow) */
+    .high-impact-card { 
+        border: 2px solid #D4AF37; 
+        padding: 20px; 
+        border-radius: 12px; 
+        margin-bottom: 25px; 
+        background-color: #1c1910; 
+        box-shadow: 0px 0px 20px rgba(212, 175, 55, 0.2);
+    }
+    
+    .time-stamp { color: #8899ac; font-size: 0.85rem; }
+    .impact-badge { 
+        background-color: #D4AF37; 
+        color: #000000; 
+        padding: 2px 10px; 
+        border-radius: 4px; 
+        font-weight: bold; 
+        font-size: 0.75rem;
+        margin-right: 10px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -70,11 +104,9 @@ def news_dashboard():
                 title = news_tag.find('news:title').text
                 pub_date = news_tag.find('news:publication_date').text
                 link = entry.find('loc').text
+                img_url = entry.find('image:loc').text if entry.find('image:loc') else None
                 
-                img_tag = entry.find('image:loc')
-                img_url = img_tag.text if img_tag else None
-                
-                # --- MODIFIED: RELATIVE TIME LOGIC ---
+                # --- RELATIVE TIME LOGIC ---
                 dt = datetime.fromisoformat(pub_date.replace('Z', '+00:00'))
                 now = datetime.now(dt.tzinfo)
                 diff = now - dt
@@ -87,31 +119,35 @@ def news_dashboard():
                 elif seconds < 86400:
                     clean_time = f"{int(seconds // 3600)}h ago"
                 else:
-                    # Older than 24 hours: Show full date
                     clean_time = dt.strftime("%b %d, %I:%M %p")
-                # -------------------------------------
 
-                if any(word in title.upper() for word in IMPACT_KEYWORDS):
+                # --- CHECK FOR IMPORTANCE ---
+                is_super = any(word in title.upper() for word in SUPER_IMPACT)
+                is_normal = any(word in title.upper() for word in IMPACT_KEYWORDS)
+
+                if is_super or is_normal:
                     found_any = True
                     
                     if title not in st.session_state.seen_headlines:
-                        send_ntfy_push(title, link)
+                        send_ntfy_push(title, link, is_super)
                         st.session_state.seen_headlines.add(title)
                     
-                    with st.container():
-                        st.markdown(f"---")
-                        col1, col2 = st.columns([1, 3])
-                        
-                        with col1:
-                            if img_url:
-                                st.image(img_url, use_container_width=True)
-                            else:
-                                st.image("https://via.placeholder.com/150?text=No+Image", use_container_width=True)
-                        
-                        with col2:
-                            st.caption(f"{provider} • {clean_time}")
-                            st.subheader(title)
-                            st.link_button("Read Full Story", link)
+                    # Choose style based on impact level
+                    card_class = "high-impact-card" if is_super else "news-card"
+                    
+                    # Display the Card
+                    st.markdown(f'<div class="{card_class}">', unsafe_allow_html=True)
+                    col1, col2 = st.columns([1, 3])
+                    
+                    with col1:
+                        st.image(img_url if img_url else "https://via.placeholder.com/150", use_container_width=True)
+                    
+                    with col2:
+                        badge = '<span class="impact-badge">🔥 HIGH IMPACT</span>' if is_super else ""
+                        st.markdown(f"{badge}<span class='time-stamp'>{provider} • {clean_time}</span>", unsafe_allow_html=True)
+                        st.subheader(title)
+                        st.link_button("View Analysis", link)
+                    st.markdown('</div>', unsafe_allow_html=True)
 
         except Exception as e:
             continue
