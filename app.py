@@ -30,6 +30,10 @@ if 'processed_urls' not in st.session_state:
 
 # --- 3. TIME FORMATTING HELPER ---
 def format_relative_time(dt):
+    # Safety check: if dt is not a datetime object, return a string
+    if not isinstance(dt, datetime):
+        return "Recent"
+        
     now = datetime.now()
     diff = now - dt
     
@@ -66,7 +70,6 @@ def scanner_engine():
             try:
                 r = requests.get(url, headers=headers, timeout=12)
                 soup = BeautifulSoup(r.content, 'xml')
-                # Scanning last 20 to ensure we find the "Previous 10" relevant news
                 urls = soup.find_all('url')[:20] 
                 
                 for item in urls:
@@ -80,7 +83,7 @@ def scanner_engine():
                         
                         if analysis.get("significant"):
                             entry = {
-                                "timestamp": datetime.now(), # Store raw datetime for relative calculation
+                                "timestamp": datetime.now(), 
                                 "title": title,
                                 "source": provider,
                                 "link": loc,
@@ -95,10 +98,12 @@ def scanner_engine():
     if not st.session_state.market_log:
         st.info("System Standby: Deep-scanning for market signals...")
     else:
-        # Displaying the feed
         for item in st.session_state.market_log[:15]: 
+            # FIX: Use .get() to avoid KeyError if timestamp is missing from old sessions
+            ts = item.get('timestamp')
+            rel_time = format_relative_time(ts) if ts else "Just now"
+            
             a = item['analysis']
-            rel_time = format_relative_time(item['timestamp'])
             direction = a.get("direction", "neutral").lower()
             impact = a.get("impact_level", "LOW").upper()
             
@@ -131,7 +136,7 @@ def scanner_engine():
                 </div>
             """, unsafe_allow_html=True)
 
-# --- UI & TERMINAL ---
+# --- 6. UI LAYOUT ---
 st.set_page_config(page_title="Deep Market Scanner", layout="wide")
 st.title("🏛️ Tier-1 Market Intelligence")
 
@@ -139,7 +144,7 @@ with st.sidebar:
     st.header("Admin Terminal")
     if st.button("🚀 Run Manual Test Alert"):
         st.session_state.market_log.insert(0, {
-            "timestamp": datetime.now() - timedelta(minutes=5),
+            "timestamp": datetime.now(),
             "title": "Federal Reserve signals potential rate cut in June meeting",
             "source": "INTERNAL TESTER",
             "link": "https://www.google.com",
@@ -153,6 +158,7 @@ with st.sidebar:
         st.rerun()
     
     st.divider()
-    st.info("System deep-scans last 20 headlines to ensure a historical baseline of 10 items is met.")
+    st.info("System deep-scans last 20 headlines to ensure a historical baseline is met.")
 
+# --- 7. EXECUTION ---
 scanner_engine()
