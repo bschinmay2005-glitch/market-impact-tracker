@@ -91,9 +91,9 @@ def news_dashboard():
                 soup = BeautifulSoup(r.content, 'xml')
                 
                 # Grabbing the 20 most recent URLs
-                for entry in soup.find_all('url')[:20]:
-            try:
-                # This entire block MUST be indented further than the 'try'
+                for entry in soup.find_all('url')[:20]: # Line 94
+            try: # Line 95 (Ensure this is indented 8 spaces from the left)
+                # EVERYTHING BELOW MUST BE INDENTED FURTHER (12 spaces)
                 news_tag = entry.find(['news:news', 'news'])
                 if not news_tag: 
                     continue
@@ -106,7 +106,7 @@ def news_dashboard():
                 link = entry.find('loc').text
                 
                 # Show the source next to the headline in the debug log
-                st.write(f"[{provider}] Scanning: {title[:70]}...")
+                st.write(f"[{provider}] Scanning: {title[:75]}...")
 
                 if title not in st.session_state.seen_headlines:
                     analysis = analyze_impact_with_ai(title)
@@ -115,20 +115,20 @@ def news_dashboard():
                         found_any = True
                         st.session_state.seen_headlines.add(title)
                         
-                        # Determine color and impact logic
+                        # Use the AI's logic to color the news
                         direction = analysis.get("direction", "neutral")
                         color = "#28a745" if direction == "bullish" else "#dc3545" if direction == "bearish" else "#8b949e"
                         
                         st.markdown(f"""
-                            <div style="border-left: 10px solid {color}; padding: 15px; background: #161b22; margin-bottom: 10px; border-radius: 8px;">
+                            <div style="border-left: 10px solid {color}; padding: 15px; background: #161b22; margin-bottom: 12px; border-radius: 8px;">
                                 <h4 style="margin:0; color:white;">{title}</h4>
-                                <p style="color:{color}; font-size:12px; margin-top:5px;">{analysis.get('reason')}</p>
+                                <p style="color:{color}; font-size:13px; margin-top:8px;">{analysis.get('reason')}</p>
                             </div>
                         """, unsafe_allow_html=True)
 
             except Exception as e:
-                # Local log instead of st.toast to prevent fragment crashes
-                st.write(f"⚠️ [{provider}] Scan error: {str(e)[:50]}")
+                # Local log instead of st.toast to keep the loop alive
+                st.write(f"⚠️ [{provider}] Error: {str(e)[:50]}...")
 
     if not found_any and len(st.session_state.seen_headlines) == 0:
         st.info("Scanner is warming up. No high-impact events identified in current batch.")
