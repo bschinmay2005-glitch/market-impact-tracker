@@ -6,6 +6,7 @@ import google.generativeai as genai
 from datetime import datetime
 
 # --- CRITICAL CONFIG ---
+# Replace with your actual Gemini API Key
 genai.configure(api_key="YOUR_GEMINI_API_KEY")
 ai_model = genai.GenerativeModel('gemini-1.5-flash')
 NTFY_TOPIC = "chinmay_market_shaker_2026"
@@ -54,13 +55,11 @@ st.markdown("""
     <style>
     .main { background-color: #0e1117; }
     .news-card { padding: 20px; border-radius: 12px; margin-bottom: 15px; background-color: #161b22; border: 1px solid #30363d; }
-    .bullish-card { border-left: 10px solid #28a745; }
-    .bearish-card { border-left: 10px solid #dc3545; }
-    .neutral-card { border-left: 10px solid #8b949e; }
     </style>
     """, unsafe_allow_html=True)
 
 st.title("🏛️ AI High-Impact Market Monitor")
+# This caption now updates its own timestamp inside the fragment
 st.caption(f"Scanner Live • Sitemaps Active • {datetime.now().strftime('%H:%M:%S')}")
 
 if 'seen_headlines' not in st.session_state:
@@ -74,28 +73,29 @@ def news_dashboard():
         "Economic Times": "https://economictimes.indiatimes.com/sitemap_news.xml"
     }
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0'}
-    
     found_any = False
     
     with st.expander("🔍 Scraper Live Feed (Debug)", expanded=True):
         for provider, url in sources.items():
             try:
                 r = requests.get(url, headers=headers, timeout=10)
+                # Using 'xml' parser specifically for sitemaps
                 soup = BeautifulSoup(r.content, 'xml')
                 
-                # LOOP START
-                for entry in soup.find_all('url')[:20]:
-                    try: # This is the 'try' that was causing the IndentationError
+                # Correctly finding all URL entries
+                entries = soup.find_all('url')
+                
+                for entry in entries[:20]:
+                    try:
+                        # FIX: Broadened tag search to ensure we catch 'news:title' or 'title'
                         news_tag = entry.find(['news:news', 'news'])
-                        if not news_tag: 
-                            continue
+                        if not news_tag: continue
                         
                         title_tag = news_tag.find(['news:title', 'title'])
-                        if not title_tag: 
-                            continue
+                        if not title_tag: continue
                         
                         title = title_tag.text.strip()
-                        link = entry.find('loc').text
+                        link = entry.find('loc').text if entry.find('loc') else "#"
                         
                         st.write(f"[{provider}] Scanning: {title[:75]}...")
 
@@ -112,22 +112,27 @@ def news_dashboard():
                                 
                                 st.markdown(f"""
                                     <div style="border-left: 10px solid {color}; padding: 15px; background: #161b22; margin-bottom: 12px; border-radius: 8px;">
-                                        <h4 style="margin:0; color:white;">{title}</h4>
-                                        <p style="color:{color}; font-size:13px; margin-top:8px;"><b>{analysis.get('impact_level')} IMPACT:</b> {analysis.get('reason')}</p>
+                                        <div style="display: flex; justify-content: space-between;">
+                                            <span style="color:{color}; font-weight:bold; font-size:12px;">{analysis.get('impact_level')} {direction.upper()}</span>
+                                            <small style="color:gray;">{provider}</small>
+                                        </div>
+                                        <h4 style="margin:10px 0; color:white;">{title}</h4>
+                                        <p style="color:#8b949e; font-size:13px;"><b>Reason:</b> {analysis.get('reason')}</p>
+                                        <a href="{link}" target="_blank" style="color:#58a6ff; font-size:12px; text-decoration:none;">Read Source →</a>
                                     </div>
                                 """, unsafe_allow_html=True)
-                    except Exception as inner_e:
-                        continue # Skip individual bad headlines
+                    except Exception:
+                        continue 
 
             except Exception as outer_e:
                 st.write(f"⚠️ [{provider}] Connection Error: {str(outer_e)[:50]}...")
 
     if not found_any and len(st.session_state.seen_headlines) == 0:
-        st.info("Scanner is warming up. No high-impact events identified in current batch.")
+        st.info("Scanner is warming up. No market-shaking events identified yet.")
 
 # --- SIDEBAR ---
 with st.sidebar:
-    st.header("Admin")
+    st.header("Admin Controls")
     if st.button("Clear Cache & Force Re-scan"):
         st.session_state.seen_headlines = set()
         st.rerun()
