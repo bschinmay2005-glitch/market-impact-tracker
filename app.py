@@ -94,6 +94,8 @@ def news_dashboard():
                 if not news_tag: continue
                 
                 title = news_tag.find('news:title').text
+                # TEMPORARY TEST: Force a domestic/international headline
+                title = "RBI surprises market with 50bps rate cut; Titagarh Rail hits 20% upper circuit"
                 link = entry.find('loc').text
                 pub_date = news_tag.find('news:publication_date').text
                 img_url = entry.find('image:loc').text if entry.find('image:loc') else "https://via.placeholder.com/150"
