@@ -4,39 +4,48 @@ from bs4 import BeautifulSoup
 import json
 import google.generativeai as genai
 from datetime import datetime
+import re
+import pandas as pd
 
-# --- CRITICAL CONFIG ---
-# Replace with your actual Gemini API Key
-genai.configure(api_key="YOUR_GEMINI_API_KEY")
-# Use the newer System Instruction feature for reliability
+# --- 1. CRITICAL CONFIG & API SETUP ---
+# It's better to use st.secrets["GEMINI_API_KEY"] if deploying, 
+# otherwise replace the string below.
+GEMINI_KEY = "YOUR_ACTUAL_GEMINI_API_KEY" 
+NTFY_TOPIC = "chinmay_market_shaker_2026"
+
+genai.configure(api_key=GEMINI_KEY)
+
+# This is the "Brain" of the system - strictly tuned for traders.
 ai_model = genai.GenerativeModel(
     model_name='gemini-1.5-flash',
     generation_config={"response_mime_type": "application/json"},
-    system_instruction="You are a Tier-1 Hedge Fund Analyst. Evaluate news for immediate impact on Nifty 50 and Sensex."
+    system_instruction=(
+        "You are a Tier-1 Hedge Fund Analyst. Your ONLY job is to filter market-moving news. "
+        "IGNORE: Sports, entertainment, lifestyle, general politics, or fluff. "
+        "ONLY ACCEPT: GDP, Inflation, RBI/Fed policy, Corporate Earnings, Mergers, "
+        "Sectoral shifts (Auto, Tech, Banking), and Geopolitics affecting Oil/Trade. "
+        "If news is significant, classify impact as HIGH/MEDIUM/LOW and direction as bullish/bearish/neutral."
+    )
 )
 
-def analyze_impact_with_ai(headline):
-    prompt = f"""
-    Role: Senior Financial Analyst (Indian Markets)
-    Task: Analyze the economic impact of this headline.
-    Headline: "{headline}"
+# --- 2. CORE FUNCTIONS ---
 
-    Return ONLY a JSON object:
-    {{
-        "significant": true/false,
-        "direction": "bullish/bearish/neutral",
-        "impact_level": "HIGH/MEDIUM/LOW",
-        "reason": "1-sentence link to Indian markets (e.g. Oil prices, FII flow, Sector impact)."
-    }}
-    """
+def analyze_impact_with_ai(headline):
+    """Sends headline to Gemini and enforces a strict JSON response."""
+    prompt = f"Analyze this headline for Indian Market impact: '{headline}'"
     try:
         response = ai_model.generate_content(prompt)
-        raw = response.text.replace('```json', '').replace('```', '').strip()
-        return json.loads(raw)
-    except:
+        # Use regex to ensure we only get the JSON part
+        match = re.search(r'\{.*\}', response.text, re.DOTALL)
+        if match:
+            data = json.loads(match.group())
+            return data
+        return {"significant": False}
+    except Exception:
         return {"significant": False}
 
 def send_ntfy_push(title, link, analysis):
+    """Sends a high-priority notification to your phone via ntfy.sh."""
     priority = "5" if analysis.get("impact_level") == "HIGH" else "3"
     tag = "rotating_light" if analysis.get("direction") == "bearish" else "rocket"
     try:
@@ -53,115 +62,120 @@ def send_ntfy_push(title, link, analysis):
     except:
         pass
 
-# --- UI STYLE ---
-st.set_page_config(page_title="AI Market Shaker 2026", layout="wide")
+# --- 3. UI LAYOUT & STYLING ---
+
+st.set_page_config(page_title="AI Market Intelligence", layout="wide", page_icon="🏛️")
+
+# Custom Dark Theme CSS
 st.markdown("""
     <style>
-    .main { background-color: #0e1117; }
+    .reportview-container { background: #0e1117; }
+    .stMetric { background-color: #161b22; border-radius: 10px; padding: 10px; }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🏛️ AI High-Impact Market Monitor")
-st.caption(f"Scanner Live • Sitemaps Active • {datetime.now().strftime('%H:%M:%S')}")
+st.title("🏛️ Tier-1 Market Intelligence")
+st.subheader(f"Global & Domestic Economic Scanner")
 
-if 'seen_headlines' not in st.session_state:
-    st.session_state.seen_headlines = set()
+# Initialize Session States
+if 'market_log' not in st.session_state:
+    st.session_state.market_log = []
+if 'processed_urls' not in st.session_state:
+    st.session_state.processed_urls = set()
 
-# --- THE SCANNER ---
+# --- 4. SCANNER ENGINE ---
+
 @st.fragment(run_every=60)
-def news_dashboard():
+def scanner_loop():
     sources = {
         "Moneycontrol": "https://www.moneycontrol.com/news/news-sitemap.xml",
         "Economic Times": "https://economictimes.indiatimes.com/etstatic/sitemaps/et/news/sitemap-today.xml"
     }
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
-    }
-    found_any = False
     
-    with st.expander("🔍 Scraper Live Feed (Debug)", expanded=True):
-        st.write(f"Last Pulse: {datetime.now().strftime('%H:%M:%S')}")
-        
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+    
+    # Progress indicator
+    with st.status("Scanning Markets...", expanded=False) as status:
+        found_new = False
         for provider, url in sources.items():
             try:
-                r = requests.get(url, headers=headers, timeout=15)
-                if r.status_code != 200:
-                    st.write(f"❌ {provider} blocked us (Status: {r.status_code})")
-                    continue
-                
+                r = requests.get(url, headers=headers, timeout=10)
                 soup = BeautifulSoup(r.content, 'xml')
-                entries = soup.find_all('url')
+                urls = soup.find_all('url')[:15] # Fresh 15
                 
-                if not entries:
-                    st.write(f"⚠️ {provider}: No <url> tags found.")
-                    continue
-
-                for entry in entries[:15]:
-                    try:
-                        title_tag = entry.find(['news:title', 'title', 'image:title'])
-                        if not title_tag: continue
+                for item in urls:
+                    loc = item.find('loc').text
+                    title_tag = item.find(['news:title', 'title'])
+                    title = title_tag.text.strip() if title_tag else ""
+                    
+                    # Only process if we haven't seen this URL before
+                    if loc not in st.session_state.processed_urls and title:
+                        analysis = analyze_impact_with_ai(title)
+                        st.session_state.processed_urls.add(loc)
                         
-                        title = title_tag.text.strip()
-                        link = entry.find('loc').text if entry.find('loc') else "#"
-                        
-                        st.write(f"[{provider}] Scanning: {title[:60]}...")
-
-                        if title not in st.session_state.seen_headlines:
-                            analysis = analyze_impact_with_ai(title)
-                            
-                            # --- INTELLIGENCE FILTER ---
-                            if analysis.get("significant") == True: 
-                                found_any = True
-                                st.session_state.seen_headlines.add(title)
-                                send_ntfy_push(title, link, analysis)
-                                
-                                # Color Logic
-                                direction = analysis.get("direction", "neutral").lower()
-                                if direction == "bullish":
-                                    color = "#28a745" # Positive Green
-                                    icon = "💹"
-                                elif direction == "bearish":
-                                    color = "#dc3545" # Negative Red
-                                    icon = "🚨"
-                                else:
-                                    color = "#8b949e" # Neutral Gray
-                                    icon = "⚖️"
-                                
-                                impact = analysis.get("impact_level", "LOW").upper()
-
-                                # Visual Display
-                                st.markdown(f"""
-                                    <div style="border-left: 10px solid {color}; padding: 20px; background: #161b22; margin-bottom: 15px; border-radius: 12px; border: 1px solid #30363d;">
-                                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                                            <span style="background-color: {color}22; color: {color}; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: bold; border: 1px solid {color}44;">
-                                                {impact} IMPACT
-                                            </span>
-                                            <small style="color: #8b949e;">{provider} {icon}</small>
-                                        </div>
-                                        <h3 style="margin: 12px 0 8px 0; color: white; font-size: 1.15rem;">{title}</h3>
-                                        <p style="color: #c9d1d9; font-size: 14px; line-height: 1.5;">
-                                            <b>AI Assessment:</b> {analysis.get('reason')}
-                                        </p>
-                                        <div style="display: flex; gap: 15px; margin-top: 10px;">
-                                            <a href="{link}" target="_blank" style="color: #58a6ff; font-size: 12px; text-decoration: none; font-weight: bold;">READ SOURCE →</a>
-                                            <span style="color: {color}; font-size: 12px; font-weight: bold;">SENTIMENT: {direction.upper()}</span>
-                                        </div>
-                                    </div>
-                                """, unsafe_allow_html=True)
-                    except:
-                        continue
+                        if analysis.get("significant") == True:
+                            new_entry = {
+                                "time": datetime.now().strftime("%H:%M"),
+                                "title": title,
+                                "source": provider,
+                                "link": loc,
+                                "analysis": analysis
+                            }
+                            st.session_state.market_log.insert(0, new_entry)
+                            send_ntfy_push(title, loc, analysis)
+                            found_new = True
             except Exception as e:
-                st.write(f"⚠️ {provider} Error: {str(e)[:50]}")
+                st.write(f"Error connecting to {provider}")
+        
+        status.update(label="Scan Complete", state="complete")
 
-    if not found_any and len(st.session_state.seen_headlines) == 0:
-        st.info("Scanner Warming Up... Waiting for high-impact market signals.")
+    # --- 5. DISPLAY RESULTS ---
+    
+    if not st.session_state.market_log:
+        st.info("Awaiting high-impact market signals. System is active.")
+    else:
+        for entry in st.session_state.market_log[:25]: # Show latest 25 items
+            a = entry['analysis']
+            direction = a.get("direction", "neutral").lower()
+            impact = a.get("impact_level", "LOW").upper()
+            
+            # Logic for Visuals based on Sentiment
+            if direction == "bullish":
+                color, bg = "#28a745", "rgba(40, 167, 69, 0.1)" # Green
+            elif direction == "bearish":
+                color, bg = "#dc3545", "rgba(220, 53, 69, 0.1)" # Red
+            else:
+                color, bg = "#8b949e", "rgba(139, 148, 158, 0.1)" # Neutral
 
-# --- SIDEBAR ---
+            # HTML Injection for the "Market Card"
+            st.markdown(f"""
+                <div style="border-left: 8px solid {color}; background-color: {bg}; padding: 20px; border-radius: 10px; margin-bottom: 12px; border: 1px solid {color}44;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: {color}; font-weight: bold; font-size: 14px;">[{impact} IMPACT]</span>
+                        <span style="color: #8b949e; font-size: 12px;">{entry['time']} | {entry['source']}</span>
+                    </div>
+                    <h3 style="margin: 10px 0; color: white; font-size: 1.2rem;">{entry['title']}</h3>
+                    <p style="color: #c9d1d9; font-size: 14px;"><b>Analysis:</b> {a.get('reason')}</p>
+                    <div style="display: flex; gap: 20px;">
+                        <a href="{entry['link']}" target="_blank" style="color: #58a6ff; text-decoration: none; font-size: 12px; font-weight: bold;">READ FULL NEWS →</a>
+                        <span style="color: {color}; font-size: 12px; font-weight: bold;">SENTIMENT: {direction.upper()}</span>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+
+# --- 6. SIDEBAR ADMIN ---
 with st.sidebar:
-    st.header("Admin Controls")
-    if st.button("Clear Cache & Force Re-scan"):
-        st.session_state.seen_headlines = set()
+    st.header("Settings")
+    if st.button("Clear Dashboard"):
+        st.session_state.market_log = []
+        st.session_state.processed_urls = set()
         st.rerun()
+    
+    st.divider()
+    st.write("Monitoring:")
+    st.write("- Global Macro")
+    st.write("- Domestic Policy")
+    st.write("- Corporate Earnings")
 
-news_dashboard()
+# Start the dashboard
+scanner_loop()
