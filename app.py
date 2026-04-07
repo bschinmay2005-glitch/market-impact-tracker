@@ -83,14 +83,14 @@ def news_dashboard():
     
     found_any = False
     
-    # Activity Log to prove it is working
+    # This expander will now show: [Source] News Title...
     with st.expander("🔍 Scraper Live Feed (Debug)", expanded=True):
         for provider, url in sources.items():
             try:
                 r = requests.get(url, headers=headers, timeout=10)
                 soup = BeautifulSoup(r.content, 'xml')
                 
-                # We check the top 20 most recent URLs from each site
+                # Grabbing the 20 most recent URLs
                 for entry in soup.find_all('url')[:20]:
                     news_tag = entry.find(['news:news', 'news'])
                     if not news_tag: continue
@@ -101,10 +101,11 @@ def news_dashboard():
                     title = title_tag.text.strip()
                     link = entry.find('loc').text
                     
-                    st.write(f"Reading: {title[:70]}...")
+                    # --- UPDATED LINE BELOW ---
+                    # This now prints the website name next to the news
+                    st.write(f"[{provider}] Scanning: {title[:75]}...")
 
                     if title not in st.session_state.seen_headlines:
-                        # AI intelligently decides if this is worth showing
                         analysis = analyze_impact_with_ai(title)
                         
                         if analysis.get("significant"):
@@ -112,7 +113,7 @@ def news_dashboard():
                             st.session_state.seen_headlines.add(title)
                             send_ntfy_push(title, link, analysis)
                             
-                            # UI Rendering
+                            # UI Rendering for the Main Dashboard
                             impact = analysis.get("impact_level", "LOW")
                             direction = analysis.get("direction", "neutral")
                             color = "#28a745" if direction == "bullish" else "#dc3545" if direction == "bearish" else "#8b949e"
@@ -124,18 +125,19 @@ def news_dashboard():
                                         <span style="background:{color}; color:white; padding:2px 8px; border-radius:4px; font-weight:bold; font-size:12px;">
                                             {impact} {direction.upper()}
                                         </span>
-                                        <small style="color:#58a6ff;">{provider}</small>
+                                        <small style="color:#58a6ff;">Source: {provider}</small>
                                     </div>
                                     <h3 style="color: white; margin-top: 10px;">{title}</h3>
                                     <p style="color: #8b949e; font-style: italic;"><b>AI Analysis:</b> {analysis.get('reason')}</p>
                                     <a href="{link}" target="_blank" style="color: #58a6ff; text-decoration: none;">View Full Details →</a>
                                 </div>
                             """, unsafe_allow_html=True)
-            except:
-                st.write(f"⚠️ Failed to reach {provider}")
+            except Exception as e:
+                # Log the specific error if a site fails
+                st.write(f"⚠️ [{provider}] Error: {str(e)[:50]}...")
 
     if not found_any and len(st.session_state.seen_headlines) == 0:
-        st.info("Scanner is warming up. If this stays blank, click 'Clear Cache' in the sidebar.")
+        st.info("Scanner is warming up. No high-impact events identified in current batch.")
 
 # --- SIDEBAR (Static) ---
 with st.sidebar:
