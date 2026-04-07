@@ -71,7 +71,7 @@ st.markdown("""
 st.title("🏛️ AI High-Impact Market Archive")
 
 if 'seen_headlines' not in st.session_state:
-    st.session_state.session_state.seen_headlines = set()
+    st.session_state.seen_headlines = set()
 
 @st.fragment(run_every=60)
 def news_dashboard():
