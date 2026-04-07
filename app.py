@@ -12,6 +12,7 @@ ai_model = genai.GenerativeModel('gemini-1.5-flash')
 NTFY_TOPIC = "chinmay_market_shaker_2026"
 
 def analyze_impact_with_ai(headline):
+    # Modified Prompt: Forced significance to show all news, but categorized by impact
     prompt = f"""
     Role: Senior Financial Analyst (Indian Markets)
     Task: Categorize this headline for a professional dashboard.
@@ -19,7 +20,7 @@ def analyze_impact_with_ai(headline):
 
     Rules:
     1. ALWAYS set "significant": true (I want to see all economic/global news).
-    2. impact_level: "HIGH" if it shifts Nifty/Sensex/Sectors. "LOW" for general/global news.
+    2. impact_level: "HIGH" if it shifts Nifty/Sensex/Sectors. "LOW" for general/global news or noise.
     3. direction: "bullish" (positive), "bearish" (negative), or "neutral".
     
     Return ONLY JSON:
@@ -27,7 +28,7 @@ def analyze_impact_with_ai(headline):
         "significant": true,
         "direction": "bullish/bearish/neutral",
         "impact_level": "HIGH/LOW",
-        "reason": "1-sentence economic context."
+        "reason": "1-sentence economic context linking to Indian markets or global sentiment."
     }}
     """
     try:
@@ -35,8 +36,7 @@ def analyze_impact_with_ai(headline):
         raw = response.text.replace('```json', '').replace('```', '').strip()
         return json.loads(raw)
     except:
-        # Fallback if AI fails
-        return {"significant": True, "direction": "neutral", "impact_level": "LOW", "reason": "Analyzing market data..."}
+        return {"significant": True, "direction": "neutral", "impact_level": "LOW", "reason": "Analyzing market ripple effects..."}
 
 def send_ntfy_push(title, link, analysis):
     priority = "5" if analysis.get("impact_level") == "HIGH" else "3"
@@ -72,6 +72,7 @@ if 'seen_headlines' not in st.session_state:
 # --- THE SCANNER ---
 @st.fragment(run_every=60)
 def news_dashboard():
+    # Updated sources to avoid 404 errors
     sources = {
         "Moneycontrol": "https://www.moneycontrol.com/news/news-sitemap.xml",
         "Economic Times": "https://economictimes.indiatimes.com/etstatic/sitemaps/et/news/sitemap-today.xml"
@@ -112,32 +113,33 @@ def news_dashboard():
                         if title not in st.session_state.seen_headlines:
                             analysis = analyze_impact_with_ai(title)
                             
-                            # --- INTELLIGENCE FILTER ---
+                            # Now displays everything because "significant" is always true
                             if analysis.get("significant"): 
                                 found_any = True
                                 st.session_state.seen_headlines.add(title)
                                 send_ntfy_push(title, link, analysis)
                                 
-                                # 1. Color Intelligence
+                                # 1. Color Intelligence (Sentiment)
                                 direction = analysis.get("direction", "neutral").lower()
                                 if direction == "bullish":
-                                    color = "#28a745" # Green
-                                    icon = "💹"
+                                    color = "#28a745" # Positive Green
+                                    icon = "📈"
                                 elif direction == "bearish":
-                                    color = "#dc3545" # Red
-                                    icon = "🚨"
+                                    color = "#dc3545" # Negative Red
+                                    icon = "📉"
                                 else:
-                                    color = "#8b949e" # Gray
+                                    color = "#8b949e" # Neutral Gray
                                     icon = "⚖️"
                                 
-                                # 2. Visual Hierarchy Logic
+                                # 2. Impact Visual Hierarchy
                                 impact = analysis.get("impact_level", "LOW").upper()
-                                border_thickness = "10px" if impact == "HIGH" else "3px"
-                                card_opacity = "1.0" if impact == "HIGH" else "0.75"
+                                # Thick bar for High Impact, thin for Low Impact
+                                border_thickness = "12px" if impact == "HIGH" else "4px"
+                                # Faded background for Low Impact to keep focus on High Impact
+                                card_opacity = "1.0" if impact == "HIGH" else "0.8"
 
-                                # Visual Display
                                 st.markdown(f"""
-                                    <div style="border-left: {border_thickness} solid {color}; opacity: {card_opacity}; padding: 18px; background: #161b22; margin-bottom: 12px; border-radius: 10px; border: 1px solid #30363d;">
+                                    <div style="border-left: {border_thickness} solid {color}; opacity: {card_opacity}; padding: 18px; background: #161b22; margin-bottom: 12px; border-radius: 10px; border-top: 1px solid #30363d; border-right: 1px solid #30363d; border-bottom: 1px solid #30363d;">
                                         <div style="display: flex; justify-content: space-between; align-items: center;">
                                             <span style="background-color: {color}22; color: {color}; padding: 3px 10px; border-radius: 20px; font-size: 10px; font-weight: bold; border: 1px solid {color}44;">
                                                 {impact} IMPACT • {direction.upper()}
