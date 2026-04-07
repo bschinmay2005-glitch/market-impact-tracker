@@ -76,7 +76,9 @@ if 'seen_headlines' not in st.session_state:
 @st.fragment(run_every=60)
 def news_dashboard():
     sources = {
-        "Moneycontrol": "https://www.moneycontrol.com/news/news-sitemap.xml",
+        "Moneycontrol": "https://www.moneycontrol.com/news/.xml",
+        "Moneycontrol": "https://www.moneycontrol.com/news/business/markets/.xml",
+        "Moneycontrol": "https://www.moneycontrol.com/news/business/economy/.xml",
         "Economic Times": "https://economictimes.indiatimes.com/sitemap_news.xml"
     }
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
