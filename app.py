@@ -3,7 +3,7 @@ import requests
 from bs4 import BeautifulSoup
 import json
 import google.generativeai as genai
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
 
 # --- 1. CONFIGURATION ---
@@ -18,29 +18,40 @@ ai_model = genai.GenerativeModel(
     system_instruction=(
         "You are a Tier-1 Hedge Fund Analyst. Filter news for Indian Traders. "
         "STRICT RULE: Only accept GDP, Inflation, RBI, Fed, Corporate Earnings, M&A, or Geopolitics. "
-        "IGNORE: Sports, general politics, and lifestyle. "
         "Return ONLY JSON: {'significant': bool, 'direction': 'bullish'|'bearish'|'neutral', 'impact_level': 'HIGH'|'MEDIUM'|'LOW', 'reason': 'str'}"
     )
 )
 
-# --- 2. SESSION STATE MANAGEMENT ---
+# --- 2. SESSION STATE ---
 if 'market_log' not in st.session_state:
-    st.session_state.market_log = [] # This stores our "Display Feed"
+    st.session_state.market_log = []
 if 'processed_urls' not in st.session_state:
-    st.session_state.processed_urls = set() # This prevents duplicate AI calls
+    st.session_state.processed_urls = set()
 
-# --- 3. THE INTELLIGENCE ENGINE ---
+# --- 3. TIME FORMATTING HELPER ---
+def format_relative_time(dt):
+    now = datetime.now()
+    diff = now - dt
+    
+    if diff < timedelta(seconds=60):
+        return f"{int(diff.total_seconds())} secs ago"
+    elif diff < timedelta(minutes=60):
+        return f"{int(diff.total_seconds() // 60)} mins ago"
+    elif diff < timedelta(hours=24):
+        return f"{int(diff.total_seconds() // 3600)} hrs ago"
+    else:
+        return dt.strftime("%Y-%m-%d %H:%M")
+
+# --- 4. CORE FUNCTIONS ---
 def analyze_impact_with_ai(headline):
     try:
-        response = ai_model.generate_content(f"Analyze impact: {headline}")
+        response = ai_model.generate_content(f"Analyze: {headline}")
         match = re.search(r'\{.*\}', response.text, re.DOTALL)
-        if match:
-            return json.loads(match.group())
-        return {"significant": False}
+        return json.loads(match.group()) if match else {"significant": False}
     except:
         return {"significant": False}
 
-# --- 4. THE SCANNER (LATEST & HISTORICAL) ---
+# --- 5. THE SCANNER ENGINE ---
 @st.fragment(run_every=60)
 def scanner_engine():
     sources = {
@@ -50,12 +61,12 @@ def scanner_engine():
     
     headers = {'User-Agent': 'Mozilla/5.0'}
     
-    with st.status("Deep Scanning for Historical & Live Signals...", expanded=False) as status:
+    with st.status("Syncing Live & Historical Data...", expanded=False) as status:
         for provider, url in sources.items():
             try:
                 r = requests.get(url, headers=headers, timeout=12)
                 soup = BeautifulSoup(r.content, 'xml')
-                # Grab the last 20 URLs to ensure we find at least 10 relevant ones
+                # Scanning last 20 to ensure we find the "Previous 10" relevant news
                 urls = soup.find_all('url')[:20] 
                 
                 for item in urls:
@@ -69,83 +80,79 @@ def scanner_engine():
                         
                         if analysis.get("significant"):
                             entry = {
-                                "time": datetime.now().strftime("%H:%M:%S"),
+                                "timestamp": datetime.now(), # Store raw datetime for relative calculation
                                 "title": title,
                                 "source": provider,
                                 "link": loc,
                                 "analysis": analysis
                             }
-                            # Always put newest at the top
                             st.session_state.market_log.insert(0, entry)
             except:
                 continue
-        status.update(label="Sync Complete", state="complete")
+        status.update(label="System Synced", state="complete")
 
-    # --- DISPLAY FEED (Limited to top 15 items) ---
+    # --- DISPLAY FEED ---
     if not st.session_state.market_log:
-        st.info("System Standby: No significant market-moving news found in recent history.")
+        st.info("System Standby: Deep-scanning for market signals...")
     else:
-        # We display the top 15 (which includes the 10 historical + any new upcoming ones)
+        # Displaying the feed
         for item in st.session_state.market_log[:15]: 
             a = item['analysis']
+            rel_time = format_relative_time(item['timestamp'])
             direction = a.get("direction", "neutral").lower()
             impact = a.get("impact_level", "LOW").upper()
             
-            # Dynamic Styling
-            if direction == "bullish":
-                color, bg = "#28a745", "rgba(40, 167, 69, 0.1)"
-            elif direction == "bearish":
-                color, bg = "#dc3545", "rgba(220, 53, 69, 0.1)"
-            else:
-                color, bg = "#8b949e", "rgba(139, 148, 158, 0.05)"
+            # Color Logic
+            color = "#28a745" if direction == "bullish" else "#dc3545" if direction == "bearish" else "#8b949e"
+            bg = f"{color}15"
 
             st.markdown(f"""
-                <div style="border-left: 10px solid {color}; background-color: {bg}; padding: 20px; border-radius: 10px; margin-bottom: 12px; border: 1px solid {color}33;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <span style="color: {color}; font-weight: bold; letter-spacing: 1px; font-size: 13px;">
+                <div style="border-left: 10px solid {color}; background-color: {bg}; padding: 20px; border-radius: 12px; margin-bottom: 15px; border: 1px solid {color}33;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <span style="color: {color}; font-weight: bold; letter-spacing: 1px; font-size: 12px;">
                             [{impact} IMPACT]
                         </span>
-                        <span style="color: #8b949e; font-size: 11px;">
-                            🕒 {item['time']} | 🏛️ SOURCE: {item['source']}
+                        <span style="color: #8b949e; font-size: 11px; font-weight: 600;">
+                            🕒 {rel_time} | 🏛️ {item['source']}
                         </span>
                     </div>
                     <h3 style="margin: 0 0 10px 0; color: white; font-size: 1.2rem; line-height: 1.4;">{item['title']}</h3>
-                    <p style="color: #c9d1d9; font-size: 14px; margin-bottom: 10px;">
-                        <b>AI Assessment:</b> {a.get('reason')}
+                    <p style="color: #c9d1d9; font-size: 14px; margin-bottom: 12px;">
+                        <b>AI Logic:</b> {a.get('reason')}
                     </p>
-                    <div style="display: flex; gap: 20px; align-items: center;">
-                        <a href="{item['link']}" target="_blank" style="color: #58a6ff; text-decoration: none; font-size: 12px; font-weight: bold;">READ SOURCE ↗</a>
-                        <span style="color: {color}; font-size: 11px; font-weight: bold; background: {color}22; padding: 2px 8px; border-radius: 4px;">
-                            {direction.upper()}
+                    <div style="display: flex; gap: 25px; align-items: center;">
+                        <a href="{item['link']}" target="_blank" style="color: #58a6ff; text-decoration: none; font-size: 13px; font-weight: bold; border: 1px solid #58a6ff44; padding: 4px 10px; border-radius: 5px;">
+                            READ SOURCE ↗
+                        </a>
+                        <span style="color: {color}; font-size: 11px; font-weight: bold; background: {color}22; padding: 3px 8px; border-radius: 4px; border: 1px solid {color}44;">
+                            SENTIMENT: {direction.upper()}
                         </span>
                     </div>
                 </div>
             """, unsafe_allow_html=True)
 
-# --- 5. UI & TERMINAL ---
-st.set_page_config(page_title="Deep Market Intelligence", layout="wide")
+# --- UI & TERMINAL ---
+st.set_page_config(page_title="Deep Market Scanner", layout="wide")
 st.title("🏛️ Tier-1 Market Intelligence")
 
 with st.sidebar:
-    st.header("Control Terminal")
+    st.header("Admin Terminal")
     if st.button("🚀 Run Manual Test Alert"):
-        test_data = {
-            "time": datetime.now().strftime("%H:%M:%S"),
-            "title": "Indian GDP Growth exceeds expectations at 8.4%; Nifty futures surge",
+        st.session_state.market_log.insert(0, {
+            "timestamp": datetime.now() - timedelta(minutes=5),
+            "title": "Federal Reserve signals potential rate cut in June meeting",
             "source": "INTERNAL TESTER",
-            "link": "#",
-            "analysis": {"significant": True, "direction": "bullish", "impact_level": "HIGH", "reason": "Higher GDP growth signals strong domestic consumption and attracts global FII flows."}
-        }
-        st.session_state.market_log.insert(0, test_data)
+            "link": "https://www.google.com",
+            "analysis": {"significant": True, "direction": "bullish", "impact_level": "HIGH", "reason": "Dovish Fed stance usually leads to lower yields and increased FII flow to India."}
+        })
         st.rerun()
 
-    if st.button("Clear & Restart Scanner"):
+    if st.button("Clear Dashboard"):
         st.session_state.market_log = []
         st.session_state.processed_urls = set()
         st.rerun()
     
     st.divider()
-    st.info("System is deep-scanning the last 40 headlines across Moneycontrol & ET to find the 10 most relevant starting points.")
+    st.info("System deep-scans last 20 headlines to ensure a historical baseline of 10 items is met.")
 
-# EXECUTE SCANNER
 scanner_engine()
