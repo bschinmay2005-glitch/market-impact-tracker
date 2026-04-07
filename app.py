@@ -3,26 +3,41 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 import re
+import json
+import google.generativeai as genai
 
 # --- CONFIGURATION ---
 NTFY_TOPIC = "chinmay_market_shaker_2026" 
 
-# Broadened to capture geopolitical moves that affect the market
-BULLISH_INDICATORS = ["SURGE", "JUMP", "PROFIT", "RECORDS", "GROWTH", "ACQUIRES", "UP", "GAINS", "STIMULUS", "DIVIDEND", "BEATS", "RECOVERY"]
-BEARISH_INDICATORS = ["CRASH", "PLUNGE", "LOSS", "DEBT", "FALL", "SLUMP", "DOWN", "WAR", "SANCTION", "INFLATION", "DEFAULT", "LAYOFF", "DROPS", "SCRAMBLES", "AMIDST"]
-# Entities and context words that make news "Market-Related"
-MARKET_ENTITIES = ["RBI", "NIFTY", "SENSEX", "FED", "HDFC", "RELIANCE", "ADANI", "TATA", "SEBI", "IPO", "NSE", "NASDAQ", "GDP", "BILLION", "TRILLION", "UAE", "IRAN", "USA", "INDIA", "OIL", "GOLD"]
+# Setup Gemini - Replace with your actual API key
+genai.configure(api_key="YOUR_GEMINI_API_KEY")
+ai_model = genai.GenerativeModel('gemini-1.5-flash')
 
-# --- THE "SAFE" NOTIFICATION FUNCTION ---
-def send_ntfy_push(headline, link, impact_type):
-    # REMOVE ALL EMOJIS from the string to prevent latin-1 errors
-    # This regex strips out everything except standard text/numbers
-    clean_headline = re.sub(r'[^\x00-\x7f]',r'', headline)
+def analyze_impact_with_ai(headline):
+    prompt = f"""
+    Analyze this news headline for its impact on the Indian Stock Market: "{headline}"
     
-    title_text = "MARKET ALERT: POSITIVE" if impact_type == "bullish" else "MARKET ALERT: NEGATIVE"
+    1. Is it a significant market mover?
+    2. Is the impact Bullish (Positive) or Bearish (Negative)?
+    3. Is it High impact (market-shaking) or Low impact (sector-specific)?
+
+    Return ONLY JSON:
+    {{"significant": true, "direction": "bullish", "impact": "HIGH"}}
+    """
+    try:
+        response = ai_model.generate_content(prompt)
+        clean_json = response.text.replace('```json', '').replace('```', '').strip()
+        return json.loads(clean_json)
+    except:
+        return {"significant": False}
+
+# --- THE NOTIFICATION FUNCTION ---
+def send_ntfy_push(headline, link, direction, impact_level):
+    clean_headline = re.sub(r'[^\x00-\x7f]', r'', headline)
     
-    # We use simple text tags instead of emoji icons to be 100% safe
-    safe_tags = "success,chart" if impact_type == "bullish" else "warning,skull"
+    # Priority 5 (Red Alert) for High Impact, 3 for Low
+    priority = "5" if impact_level == "HIGH" else "3"
+    title_text = f"[{impact_level}] MARKET {direction.upper()}"
     
     try:
         requests.post(
@@ -31,8 +46,8 @@ def send_ntfy_push(headline, link, impact_type):
             headers={
                 "Title": title_text,
                 "Click": link,
-                "Priority": "5", 
-                "Tags": safe_tags
+                "Priority": priority, 
+                "Tags": "rotating_light,chart" if impact_level == "HIGH" else "loudspeaker"
             },
             timeout=5
         )
@@ -40,7 +55,7 @@ def send_ntfy_push(headline, link, impact_type):
         pass
 
 # --- UI SETUP ---
-st.set_page_config(page_title="High-Impact Market Tracker", layout="wide")
+st.set_page_config(page_title="High-Impact AI Market Tracker", layout="wide")
 st.markdown("""
     <style>
     .main { background-color: #0e1117; color: #ffffff; }
@@ -53,10 +68,10 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🏛️ High-Impact Market Archive")
+st.title("🏛️ AI High-Impact Market Archive")
 
 if 'seen_headlines' not in st.session_state:
-    st.session_state.seen_headlines = set()
+    st.session_state.session_state.seen_headlines = set()
 
 @st.fragment(run_every=60)
 def news_dashboard():
@@ -72,7 +87,7 @@ def news_dashboard():
             r = requests.get(url, headers=headers, timeout=10)
             soup = BeautifulSoup(r.content, 'xml')
             
-            for entry in soup.find_all('url')[:40]: # Checking more stories
+            for entry in soup.find_all('url')[:20]: # AI is slower, so we check the latest 20
                 news_tag = entry.find('news:news')
                 if not news_tag: continue
                 
@@ -86,41 +101,41 @@ def news_dashboard():
                 s = diff.total_seconds()
                 clean_time = f"{int(s//60)}m ago" if s < 3600 else f"{int(s//3600)}h ago" if s < 86400 else dt.strftime("%b %d")
 
-                title_up = title.upper()
-                is_bullish = any(word in title_up for word in BULLISH_INDICATORS)
-                is_bearish = any(word in title_up for word in BEARISH_INDICATORS)
-                is_entity = any(word in title_up for word in MARKET_ENTITIES)
-
-                # TRIGGER: Entity + Direction OR just a very high-impact geopolitical word
-                if (is_entity and (is_bullish or is_bearish)) or ("WAR" in title_up) or ("CRISIS" in title_up):
-                    found_impact = True
-                    impact_direction = "bullish" if is_bullish else "bearish"
+                # --- STEP 3: THE AI ANALYST (REPLACED KEYWORDS) ---
+                if title not in st.session_state.seen_headlines:
+                    analysis = analyze_impact_with_ai(title)
                     
-                    if title not in st.session_state.seen_headlines:
-                        send_ntfy_push(title, link, impact_direction)
+                    if analysis.get("significant"):
+                        found_impact = True
+                        direction = analysis["direction"]
+                        impact_level = analysis["impact"]
+                        
+                        send_ntfy_push(title, link, direction, impact_level)
                         st.session_state.seen_headlines.add(title)
 
-                    card_class = "positive-impact" if is_bullish else "negative-impact"
-                    badge_text = "📈 POSITIVE IMPACT" if is_bullish else "📉 NEGATIVE IMPACT"
-                    badge_class = "badge-pos" if is_bullish else "badge-neg"
+                        # UI Display Logic
+                        card_class = "positive-impact" if direction == "bullish" else "negative-impact"
+                        badge_text = f"{impact_level} {direction.upper()} IMPACT"
+                        badge_class = "badge-pos" if direction == "bullish" else "badge-neg"
+                        glow = "box-shadow: 0px 0px 20px rgba(255, 255, 255, 0.15);" if impact_level == "HIGH" else ""
 
-                    st.markdown(f'''
-                        <div class="news-card {card_class}">
-                            <div style="display: flex; gap: 20px; align-items: center;">
-                                <div style="flex: 1;"><img src="{img_url}" style="width: 100%; border-radius: 8px;"></div>
-                                <div style="flex: 3;">
-                                    <span class="{badge_class}">{badge_text}</span> <span class="time-meta">{provider} • {clean_time}</span>
-                                    <h3 style="margin: 12px 0; color: white;">{title}</h3>
-                                    <a href="{link}" target="_blank" style="text-decoration: none;">
-                                        <button style="background: #30363d; color: white; border: 1px solid #444c56; padding: 8px 20px; border-radius: 6px; cursor: pointer;">View Impact Analysis</button>
-                                    </a>
+                        st.markdown(f'''
+                            <div class="news-card {card_class}" style="{glow}">
+                                <div style="display: flex; gap: 20px; align-items: center;">
+                                    <div style="flex: 1;"><img src="{img_url}" style="width: 100%; border-radius: 8px;"></div>
+                                    <div style="flex: 3;">
+                                        <span class="{badge_class}">{badge_text}</span> <span class="time-meta">{provider} • {clean_time}</span>
+                                        <h3 style="margin: 12px 0; color: white;">{title}</h3>
+                                        <a href="{link}" target="_blank" style="text-decoration: none;">
+                                            <button style="background: #30363d; color: white; border: 1px solid #444c56; padding: 8px 20px; border-radius: 6px; cursor: pointer;">View Impact Analysis</button>
+                                        </a>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    ''', unsafe_allow_html=True)
+                        ''', unsafe_allow_html=True)
         except: continue
     
     if not found_impact:
-        st.info("Scanning for significant market-moving events...")
+        st.info("AI is scanning for significant market-moving events...")
 
 news_dashboard()
