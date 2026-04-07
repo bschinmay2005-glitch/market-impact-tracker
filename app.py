@@ -68,7 +68,7 @@ if 'seen_headlines' not in st.session_state:
 def news_dashboard():
     sources = {
         "Moneycontrol": "https://www.moneycontrol.com/news/news-sitemap.xml",
-        "Economic Times": "Economic Times": "https://economictimes.indiatimes.com/etstatic/sitemaps/et/news/sitemap-today.xml"
+        "Economic Times": "https://economictimes.indiatimes.com/etstatic/sitemaps/et/news/sitemap-today.xml"
     }
     headers = {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
