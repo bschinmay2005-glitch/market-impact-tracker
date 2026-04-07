@@ -132,7 +132,10 @@ def news_dashboard():
                     ''', unsafe_allow_html=True)
                     
     except Exception as e:
-        st.sidebar.error(f"Scanner connection lost: {str(e)}")
+        # Use st.warning instead and keep it inside the main area
+        st.warning(f"Scanner connection lost: {str(e)}")
+        # Or just print to console for debugging
+        print(f"Error: {e}")
 
     if not found_impact:
         st.info("AI is currently scanning. No market-shaking events detected in this cycle.")
