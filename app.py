@@ -81,7 +81,6 @@ if st.sidebar.button("Clear History"):
 
 @st.fragment(run_every=60)
 def news_dashboard():
-    # --- CHANGED: Using Google News Proxy to bypass Moneycontrol/ET blocks ---
     search_query = "site:moneycontrol.com OR site:economictimes.indiatimes.com Indian Stock Market"
     rss_url = f"https://news.google.com/rss/search?q={search_query}&hl=en-IN&gl=IN&ceid=IN:en"
     
@@ -94,18 +93,16 @@ def news_dashboard():
     try:
         r = requests.get(rss_url, headers=headers, timeout=15)
         soup = BeautifulSoup(r.content, 'xml')
-        
-        # --- CHANGED: Google RSS uses <item> instead of <url> ---
         items = soup.find_all('item')
         
-        for item in items[:25]: # Checking top 25 headlines
+        for item in items[:25]:
             full_title = item.find('title').text
-            # Clean " - Moneycontrol" from the end of the title
             title = full_title.split(' - ')[0].strip()
             link = item.find('link').text
             
-            # --- DEBUG LOG IN SIDEBAR ---
-            st.sidebar.write(f"🔍 Scanning: {title[:50]}...")
+            # --- FIX: Wrap sidebar elements in 'with st.sidebar' ---
+            with st.sidebar:
+                st.write(f"🔍 Scanning: {title[:50]}...")
 
             if title not in st.session_state.seen_headlines:
                 analysis = analyze_impact_with_ai(title)
@@ -119,7 +116,6 @@ def news_dashboard():
                     
                     send_ntfy_push(title, link, direction, impact)
                     
-                    # --- UI CARD LOGIC ---
                     card_style = "positive-impact" if direction == "bullish" else "negative-impact"
                     badge_style = "badge-pos" if direction == "bullish" else "badge-neg"
                     
@@ -132,10 +128,9 @@ def news_dashboard():
                     ''', unsafe_allow_html=True)
                     
     except Exception as e:
-        # Use st.warning instead and keep it inside the main area
-        st.warning(f"Scanner connection lost: {str(e)}")
-        # Or just print to console for debugging
-        print(f"Error: {e}")
+        # --- FIX: Move error inside the sidebar context too ---
+        with st.sidebar:
+            st.error(f"Scanner connection lost: {str(e)}")
 
     if not found_impact:
         st.info("AI is currently scanning. No market-shaking events detected in this cycle.")
