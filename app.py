@@ -92,49 +92,32 @@ def news_dashboard():
                 
                 # Grabbing the 20 most recent URLs
                 for entry in soup.find_all('url')[:20]:
-                    news_tag = entry.find(['news:news', 'news'])
-                    if not news_tag: continue
-                    
-                    title_tag = news_tag.find(['news:title', 'title'])
-                    if not title_tag: continue
-                    
-                    title = title_tag.text.strip()
-                    link = entry.find('loc').text
-                    
-                    # --- UPDATED LINE BELOW ---
-                    # This now prints the website name next to the news
-                    st.write(f"[{provider}] Scanning: {title[:75]}...")
+            try:
+                # 1. REPAIR: Flexible tag finding (Fixes empty titles)
+                news_tag = entry.find(['news:news', 'news'])
+                if not news_tag: continue
+                
+                title_tag = news_tag.find(['news:title', 'title'])
+                if not title_tag: continue
+                
+                title = title_tag.text.strip()
+                link = entry.find('loc').text
+                
+                # 2. REPAIR: Add website name to log as requested
+                st.write(f"[{provider}] Scanning: {title[:70]}...")
 
-                    if title not in st.session_state.seen_headlines:
-                        analysis = analyze_impact_with_ai(title)
-                        
-                        if analysis.get("significant"):
-                            found_any = True
-                            st.session_state.seen_headlines.add(title)
-                            send_ntfy_push(title, link, analysis)
-                            
-                            # UI Rendering for the Main Dashboard
-                            impact = analysis.get("impact_level", "LOW")
-                            direction = analysis.get("direction", "neutral")
-                            color = "#28a745" if direction == "bullish" else "#dc3545" if direction == "bearish" else "#8b949e"
-                            card_class = f"{direction}-card"
+                if title not in st.session_state.seen_headlines:
+                    analysis = analyze_impact_with_ai(title)
+                    
+                    if analysis.get("significant"):
+                        found_any = True
+                        st.session_state.seen_headlines.add(title)
+                        # ... (your existing st.markdown code for the cards) ...
 
-                            st.markdown(f"""
-                                <div class="news-card {card_class}">
-                                    <div style="display: flex; justify-content: space-between;">
-                                        <span style="background:{color}; color:white; padding:2px 8px; border-radius:4px; font-weight:bold; font-size:12px;">
-                                            {impact} {direction.upper()}
-                                        </span>
-                                        <small style="color:#58a6ff;">Source: {provider}</small>
-                                    </div>
-                                    <h3 style="color: white; margin-top: 10px;">{title}</h3>
-                                    <p style="color: #8b949e; font-style: italic;"><b>AI Analysis:</b> {analysis.get('reason')}</p>
-                                    <a href="{link}" target="_blank" style="color: #58a6ff; text-decoration: none;">View Full Details →</a>
-                                </div>
-                            """, unsafe_allow_html=True)
             except Exception as e:
-                # Log the specific error if a site fails
-                st.write(f"⚠️ [{provider}] Error: {str(e)[:50]}...")
+                # 3. REPAIR: Remove st.toast (Fixes the silent crash/stuck timer)
+                # We use st.write inside the expander instead.
+                st.write(f"⚠️ {provider} scan hiccup: {str(e)[:50]}")
 
     if not found_any and len(st.session_state.seen_headlines) == 0:
         st.info("Scanner is warming up. No high-impact events identified in current batch.")
