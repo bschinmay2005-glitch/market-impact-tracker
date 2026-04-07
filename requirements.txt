@@ -1,5 +1,6 @@
 streamlit
-beautifulsoup4
-lxml
 requests
+beautifulsoup4
+google-generativeai
+lxml
 pandas
