@@ -30,13 +30,10 @@ if 'processed_urls' not in st.session_state:
 
 # --- 3. TIME FORMATTING HELPER ---
 def format_relative_time(dt):
-    # Safety check: if dt is not a datetime object, return a string
     if not isinstance(dt, datetime):
         return "Recent"
-        
     now = datetime.now()
     diff = now - dt
-    
     if diff < timedelta(seconds=60):
         return f"{int(diff.total_seconds())} secs ago"
     elif diff < timedelta(minutes=60):
@@ -62,10 +59,9 @@ def scanner_engine():
         "Moneycontrol": "https://www.moneycontrol.com/news/news-sitemap.xml",
         "Economic Times": "https://economictimes.indiatimes.com/etstatic/sitemaps/et/news/sitemap-today.xml"
     }
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    
-    with st.status("Syncing Live & Historical Data...", expanded=False) as status:
+    with st.status("Syncing Live Market Data...", expanded=False) as status:
         for provider, url in sources.items():
             try:
                 r = requests.get(url, headers=headers, timeout=12)
@@ -73,7 +69,10 @@ def scanner_engine():
                 urls = soup.find_all('url')[:20] 
                 
                 for item in urls:
-                    loc = item.find('loc').text
+                    loc_tag = item.find('loc')
+                    if not loc_tag: continue
+                    loc = loc_tag.text.strip()
+                    
                     title_tag = item.find(['news:title', 'title'])
                     title = title_tag.text.strip() if title_tag else ""
                     
@@ -86,7 +85,7 @@ def scanner_engine():
                                 "timestamp": datetime.now(), 
                                 "title": title,
                                 "source": provider,
-                                "link": loc,
+                                "link": loc, # REAL LINK FROM SITEMAP
                                 "analysis": analysis
                             }
                             st.session_state.market_log.insert(0, entry)
@@ -96,59 +95,49 @@ def scanner_engine():
 
     # --- DISPLAY FEED ---
     if not st.session_state.market_log:
-        st.info("System Standby: Deep-scanning for market signals...")
+        st.info("System Standby: Scanning for high-impact economic shifts...")
     else:
         for item in st.session_state.market_log[:15]: 
-            # FIX: Use .get() to avoid KeyError if timestamp is missing from old sessions
             ts = item.get('timestamp')
-            rel_time = format_relative_time(ts) if ts else "Just now"
-            
+            rel_time = format_relative_time(ts)
             a = item['analysis']
             direction = a.get("direction", "neutral").lower()
             impact = a.get("impact_level", "LOW").upper()
             
-            # Color Logic
             color = "#28a745" if direction == "bullish" else "#dc3545" if direction == "bearish" else "#8b949e"
             bg = f"{color}15"
 
             st.markdown(f"""
                 <div style="border-left: 10px solid {color}; background-color: {bg}; padding: 20px; border-radius: 12px; margin-bottom: 15px; border: 1px solid {color}33;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                        <span style="color: {color}; font-weight: bold; letter-spacing: 1px; font-size: 12px;">
-                            [{impact} IMPACT]
-                        </span>
-                        <span style="color: #8b949e; font-size: 11px; font-weight: 600;">
-                            🕒 {rel_time} | 🏛️ {item['source']}
-                        </span>
+                        <span style="color: {color}; font-weight: bold; font-size: 12px;">[{impact} IMPACT]</span>
+                        <span style="color: #8b949e; font-size: 11px; font-weight: 600;">🕒 {rel_time} | 🏛️ {item['source']}</span>
                     </div>
-                    <h3 style="margin: 0 0 10px 0; color: white; font-size: 1.2rem; line-height: 1.4;">{item['title']}</h3>
-                    <p style="color: #c9d1d9; font-size: 14px; margin-bottom: 12px;">
-                        <b>AI Logic:</b> {a.get('reason')}
-                    </p>
-                    <div style="display: flex; gap: 25px; align-items: center;">
-                        <a href="{item['link']}" target="_blank" style="color: #58a6ff; text-decoration: none; font-size: 13px; font-weight: bold; border: 1px solid #58a6ff44; padding: 4px 10px; border-radius: 5px;">
+                    <h3 style="margin: 0 0 10px 0; color: white; font-size: 1.2rem;">{item['title']}</h3>
+                    <p style="color: #c9d1d9; font-size: 14px; margin-bottom: 12px;"><b>AI Logic:</b> {a.get('reason')}</p>
+                    <div style="display: flex; gap: 20px; align-items: center;">
+                        <a href="{item['link']}" target="_blank" style="color: #58a6ff; text-decoration: none; font-size: 13px; font-weight: bold; border: 1px solid #58a6ff44; padding: 5px 12px; border-radius: 6px;">
                             READ SOURCE ↗
                         </a>
-                        <span style="color: {color}; font-size: 11px; font-weight: bold; background: {color}22; padding: 3px 8px; border-radius: 4px; border: 1px solid {color}44;">
-                            SENTIMENT: {direction.upper()}
-                        </span>
+                        <span style="color: {color}; font-size: 11px; font-weight: bold; background: {color}22; padding: 3px 8px; border-radius: 4px;">{direction.upper()}</span>
                     </div>
                 </div>
             """, unsafe_allow_html=True)
 
-# --- 6. UI LAYOUT ---
-st.set_page_config(page_title="Deep Market Scanner", layout="wide")
+# --- 6. UI ---
+st.set_page_config(page_title="Market Intelligence", layout="wide")
 st.title("🏛️ Tier-1 Market Intelligence")
 
 with st.sidebar:
-    st.header("Admin Terminal")
-    if st.button("🚀 Run Manual Test Alert"):
+    st.header("Admin")
+    if st.button("🚀 Test Real Link (Moneycontrol)"):
+        # Updated test to use a REAL market link
         st.session_state.market_log.insert(0, {
             "timestamp": datetime.now(),
-            "title": "Federal Reserve signals potential rate cut in June meeting",
-            "source": "INTERNAL TESTER",
-            "link": "https://www.google.com",
-            "analysis": {"significant": True, "direction": "bullish", "impact_level": "HIGH", "reason": "Dovish Fed stance usually leads to lower yields and increased FII flow to India."}
+            "title": "Nifty 50 hits record high as FII buying intensifies",
+            "source": "TESTER",
+            "link": "https://www.moneycontrol.com/news/business/markets/",
+            "analysis": {"significant": True, "direction": "bullish", "impact_level": "HIGH", "reason": "Positive sentiment indicator."}
         })
         st.rerun()
 
@@ -156,9 +145,5 @@ with st.sidebar:
         st.session_state.market_log = []
         st.session_state.processed_urls = set()
         st.rerun()
-    
-    st.divider()
-    st.info("System deep-scans last 20 headlines to ensure a historical baseline is met.")
 
-# --- 7. EXECUTION ---
 scanner_engine()
