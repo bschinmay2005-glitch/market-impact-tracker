@@ -14,15 +14,20 @@ NTFY_TOPIC = "chinmay_market_shaker_2026"
 def analyze_impact_with_ai(headline):
     prompt = f"""
     Role: Senior Financial Analyst (Indian Markets)
-    Task: Analyze the economic impact of this headline.
+    Task: Categorize this headline for a professional dashboard.
     Headline: "{headline}"
 
-    Return ONLY a JSON object:
+    Rules:
+    1. ALWAYS set "significant": true (I want to see all economic/global news).
+    2. impact_level: "HIGH" if it shifts Nifty/Sensex/Sectors. "LOW" for general/global news.
+    3. direction: "bullish" (positive), "bearish" (negative), or "neutral".
+    
+    Return ONLY JSON:
     {{
-        "significant": true/false,
+        "significant": true,
         "direction": "bullish/bearish/neutral",
-        "impact_level": "HIGH/MEDIUM/LOW",
-        "reason": "1-sentence link to Indian markets (e.g. Oil prices, FII flow, Sector impact)."
+        "impact_level": "HIGH/LOW",
+        "reason": "1-sentence economic context."
     }}
     """
     try:
@@ -30,7 +35,8 @@ def analyze_impact_with_ai(headline):
         raw = response.text.replace('```json', '').replace('```', '').strip()
         return json.loads(raw)
     except:
-        return {"significant": False}
+        # Fallback if AI fails
+        return {"significant": True, "direction": "neutral", "impact_level": "LOW", "reason": "Analyzing market data..."}
 
 def send_ntfy_push(title, link, analysis):
     priority = "5" if analysis.get("impact_level") == "HIGH" else "3"
@@ -107,41 +113,43 @@ def news_dashboard():
                             analysis = analyze_impact_with_ai(title)
                             
                             # --- INTELLIGENCE FILTER ---
-                            if analysis.get("significant") == True: 
+                            if analysis.get("significant"): 
                                 found_any = True
                                 st.session_state.seen_headlines.add(title)
                                 send_ntfy_push(title, link, analysis)
                                 
-                                # Color Logic
+                                # 1. Color Intelligence
                                 direction = analysis.get("direction", "neutral").lower()
                                 if direction == "bullish":
-                                    color = "#28a745" # Positive Green
+                                    color = "#28a745" # Green
                                     icon = "💹"
                                 elif direction == "bearish":
-                                    color = "#dc3545" # Negative Red
+                                    color = "#dc3545" # Red
                                     icon = "🚨"
                                 else:
-                                    color = "#8b949e" # Neutral Gray
+                                    color = "#8b949e" # Gray
                                     icon = "⚖️"
                                 
+                                # 2. Visual Hierarchy Logic
                                 impact = analysis.get("impact_level", "LOW").upper()
+                                border_thickness = "10px" if impact == "HIGH" else "3px"
+                                card_opacity = "1.0" if impact == "HIGH" else "0.75"
 
                                 # Visual Display
                                 st.markdown(f"""
-                                    <div style="border-left: 10px solid {color}; padding: 20px; background: #161b22; margin-bottom: 15px; border-radius: 12px; border: 1px solid #30363d;">
+                                    <div style="border-left: {border_thickness} solid {color}; opacity: {card_opacity}; padding: 18px; background: #161b22; margin-bottom: 12px; border-radius: 10px; border: 1px solid #30363d;">
                                         <div style="display: flex; justify-content: space-between; align-items: center;">
-                                            <span style="background-color: {color}22; color: {color}; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: bold; border: 1px solid {color}44;">
-                                                {impact} IMPACT
+                                            <span style="background-color: {color}22; color: {color}; padding: 3px 10px; border-radius: 20px; font-size: 10px; font-weight: bold; border: 1px solid {color}44;">
+                                                {impact} IMPACT • {direction.upper()}
                                             </span>
-                                            <small style="color: #8b949e;">{provider} {icon}</small>
+                                            <small style="color: #8b949e; font-size: 10px;">{provider} {icon}</small>
                                         </div>
-                                        <h3 style="margin: 12px 0 8px 0; color: white; font-size: 1.15rem;">{title}</h3>
-                                        <p style="color: #c9d1d9; font-size: 14px; line-height: 1.5;">
-                                            <b>AI Assessment:</b> {analysis.get('reason')}
+                                        <h3 style="margin: 10px 0 8px 0; color: white; font-size: 1.05rem; line-height: 1.4;">{title}</h3>
+                                        <p style="color: #c9d1d9; font-size: 13px; line-height: 1.5;">
+                                            <b>Intelligence:</b> {analysis.get('reason')}
                                         </p>
-                                        <div style="display: flex; gap: 15px; margin-top: 10px;">
-                                            <a href="{link}" target="_blank" style="color: #58a6ff; font-size: 12px; text-decoration: none; font-weight: bold;">READ SOURCE →</a>
-                                            <span style="color: {color}; font-size: 12px; font-weight: bold;">SENTIMENT: {direction.upper()}</span>
+                                        <div style="margin-top: 10px;">
+                                            <a href="{link}" target="_blank" style="color: #58a6ff; font-size: 11px; text-decoration: none; font-weight: bold;">READ SOURCE →</a>
                                         </div>
                                     </div>
                                 """, unsafe_allow_html=True)
@@ -151,7 +159,7 @@ def news_dashboard():
                 st.write(f"⚠️ {provider} Error: {str(e)[:50]}")
 
     if not found_any and len(st.session_state.seen_headlines) == 0:
-        st.info("Scanner Warming Up... Waiting for high-impact market signals.")
+        st.info("Scanner Warming Up... Waiting for market signals.")
 
 # --- SIDEBAR ---
 with st.sidebar:
