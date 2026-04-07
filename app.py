@@ -104,7 +104,8 @@ def news_dashboard():
                 # --- STEP 3: THE AI ANALYST (REPLACED KEYWORDS) ---
                 if title not in st.session_state.seen_headlines:
                     analysis = analyze_impact_with_ai(title)
-                    
+                    # This will show you EVERY headline the AI is currently reading in the sidebar
+                    st.sidebar.write(f"Reading: {title[:50]}... | Result: {analysis.get('significant')}")
                     if analysis.get("significant"):
                         found_impact = True
                         direction = analysis["direction"]
