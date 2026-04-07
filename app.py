@@ -1,7 +1,6 @@
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime
 import re
 import json
 import google.generativeai as genai
@@ -9,22 +8,17 @@ import google.generativeai as genai
 # --- CONFIGURATION ---
 NTFY_TOPIC = "chinmay_market_shaker_2026" 
 
-# Setup Gemini - REPLACE WITH YOUR ACTUAL API KEY
+# Setup Gemini
 genai.configure(api_key="YOUR_GEMINI_API_KEY")
 ai_model = genai.GenerativeModel('gemini-1.5-flash')
 
 def analyze_impact_with_ai(headline):
     prompt = f"""
     Analyze this Indian Stock Market headline: "{headline}"
-    
     Current Context (April 2026): 
-    - Watch for RBI MPC meeting outcomes (April 8).
-    - Watch for US-Iran ceasefire/Strait of Hormuz updates.
-    - Watch for Q4 Earnings (TCS, Infosys).
-
-    1. Is it a significant market mover?
-    2. Is the impact Bullish or Bearish?
-    3. Is it High or Low impact?
+    - RBI MPC meeting (April 8).
+    - US-Iran/Strait of Hormuz updates.
+    - Q4 Earnings (TCS, Infosys).
 
     Return ONLY JSON:
     {{"significant": true, "direction": "bullish", "impact": "HIGH"}}
@@ -39,14 +33,12 @@ def analyze_impact_with_ai(headline):
 def send_ntfy_push(headline, link, direction, impact_level):
     clean_headline = re.sub(r'[^\x00-\x7f]', r'', headline)
     priority = "5" if impact_level == "HIGH" else "3"
-    title_text = f"[{impact_level}] MARKET {direction.upper()}"
-    
     try:
         requests.post(
             f"https://ntfy.sh/{NTFY_TOPIC}",
             data=clean_headline.encode('utf-8'),
             headers={
-                "Title": title_text,
+                "Title": f"[{impact_level}] MARKET {direction.upper()}",
                 "Click": link,
                 "Priority": priority, 
                 "Tags": "rotating_light,chart" if impact_level == "HIGH" else "loudspeaker"
@@ -83,10 +75,7 @@ if st.sidebar.button("Clear History"):
 def news_dashboard():
     search_query = "site:moneycontrol.com OR site:economictimes.indiatimes.com Indian Stock Market"
     rss_url = f"https://news.google.com/rss/search?q={search_query}&hl=en-IN&gl=IN&ceid=IN:en"
-    
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
-    }
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/123.0.0.0'}
     
     found_impact = False
     
@@ -100,7 +89,7 @@ def news_dashboard():
             title = full_title.split(' - ')[0].strip()
             link = item.find('link').text
             
-            # --- FIX: Wrap sidebar elements in 'with st.sidebar' ---
+            # SAFE SIDEBAR LOGGING
             with st.sidebar:
                 st.write(f"🔍 Scanning: {title[:50]}...")
 
@@ -113,7 +102,6 @@ def news_dashboard():
                     
                     direction = analysis["direction"]
                     impact = analysis["impact"]
-                    
                     send_ntfy_push(title, link, direction, impact)
                     
                     card_style = "positive-impact" if direction == "bullish" else "negative-impact"
@@ -128,11 +116,12 @@ def news_dashboard():
                     ''', unsafe_allow_html=True)
                     
     except Exception as e:
-        # --- FIX: Move error inside the sidebar context too ---
+        # WRAPPED IN SIDEBAR TO PREVENT CRASH
         with st.sidebar:
-            st.error(f"Scanner connection lost: {str(e)}")
+            st.warning(f"Connection glitch: {str(e)[:50]}...")
 
     if not found_impact:
         st.info("AI is currently scanning. No market-shaking events detected in this cycle.")
 
+# Call the dashboard
 news_dashboard()
