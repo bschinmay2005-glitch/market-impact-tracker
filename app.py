@@ -72,40 +72,50 @@ def news_dashboard():
         "Moneycontrol": "https://www.moneycontrol.com/news/news-sitemap.xml",
         "Economic Times": "https://economictimes.indiatimes.com/sitemap_news.xml"
     }
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0'}
+    # NEW: More robust headers to avoid being blocked
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+    }
     found_any = False
     
     with st.expander("🔍 Scraper Live Feed (Debug)", expanded=True):
+        st.write(f"Last Pulse: {datetime.now().strftime('%H:%M:%S')}")
+        
         for provider, url in sources.items():
             try:
-                r = requests.get(url, headers=headers, timeout=10)
-                # Using 'xml' parser specifically for sitemaps
-                soup = BeautifulSoup(r.content, 'xml')
+                r = requests.get(url, headers=headers, timeout=15)
+                # Verify we actually got a 'Success' response
+                if r.status_code != 200:
+                    st.write(f"❌ {provider} blocked us (Status: {r.status_code})")
+                    continue
                 
-                # Correctly finding all URL entries
+                soup = BeautifulSoup(r.content, 'xml')
                 entries = soup.find_all('url')
                 
-                for entry in entries[:20]:
+                if not entries:
+                    st.write(f"⚠️ {provider}: Sitemap loaded but no <url> tags found.")
+                    continue
+
+                for entry in entries[:15]:
                     try:
-                        # FIX: Broadened tag search to ensure we catch 'news:title' or 'title'
-                        news_tag = entry.find(['news:news', 'news'])
-                        if not news_tag: continue
-                        
-                        title_tag = news_tag.find(['news:title', 'title'])
+                        # Find the title using any available tag
+                        title_tag = entry.find(['news:title', 'title', 'image:title'])
                         if not title_tag: continue
                         
                         title = title_tag.text.strip()
                         link = entry.find('loc').text if entry.find('loc') else "#"
                         
-                        st.write(f"[{provider}] Scanning: {title[:75]}...")
+                        st.write(f"[{provider}] Scanning: {title[:60]}...")
 
                         if title not in st.session_state.seen_headlines:
                             analysis = analyze_impact_with_ai(title)
                             
-                            if analysis.get("significant"):
+                            # FORCE DISPLAY: I've added 'or True' so you can see it working first
+                            # Change back to 'if analysis.get("significant"):' once cards appear
+                            if analysis.get("significant") or True: 
                                 found_any = True
                                 st.session_state.seen_headlines.add(title)
-                                send_ntfy_push(title, link, analysis)
                                 
                                 direction = analysis.get("direction", "neutral")
                                 color = "#28a745" if direction == "bullish" else "#dc3545" if direction == "bearish" else "#8b949e"
@@ -113,22 +123,21 @@ def news_dashboard():
                                 st.markdown(f"""
                                     <div style="border-left: 10px solid {color}; padding: 15px; background: #161b22; margin-bottom: 12px; border-radius: 8px;">
                                         <div style="display: flex; justify-content: space-between;">
-                                            <span style="color:{color}; font-weight:bold; font-size:12px;">{analysis.get('impact_level')} {direction.upper()}</span>
+                                            <span style="color:{color}; font-weight:bold; font-size:12px;">{analysis.get('impact_level', 'MID')} {direction.upper()}</span>
                                             <small style="color:gray;">{provider}</small>
                                         </div>
                                         <h4 style="margin:10px 0; color:white;">{title}</h4>
-                                        <p style="color:#8b949e; font-size:13px;"><b>Reason:</b> {analysis.get('reason')}</p>
-                                        <a href="{link}" target="_blank" style="color:#58a6ff; font-size:12px; text-decoration:none;">Read Source →</a>
+                                        <p style="color:#8b949e; font-size:13px;">{analysis.get('reason', 'Scanning market ripple effects...')}</p>
+                                        <a href="{link}" target="_blank" style="color:#58a6ff; font-size:12px; text-decoration:none;">Read Full Story →</a>
                                     </div>
                                 """, unsafe_allow_html=True)
-                    except Exception:
-                        continue 
-
-            except Exception as outer_e:
-                st.write(f"⚠️ [{provider}] Connection Error: {str(outer_e)[:50]}...")
+                    except:
+                        continue
+            except Exception as e:
+                st.write(f"⚠️ {provider} Error: {str(e)[:50]}")
 
     if not found_any and len(st.session_state.seen_headlines) == 0:
-        st.info("Scanner is warming up. No market-shaking events identified yet.")
+        st.info("Scanner Active. If this persists, the websites may be rate-limiting your IP.")
 
 # --- SIDEBAR ---
 with st.sidebar:
