@@ -9,15 +9,15 @@ from datetime import datetime
 # Replace with your actual API Key
 genai.configure(api_key="YOUR_GEMINI_API_KEY")
 ai_model = genai.GenerativeModel('gemini-1.5-flash')
-NTFY_TOPIC = "chinmay_market_shaker_2026"
 
 def analyze_impact_with_ai(headline):
-    """Deep reasoning to connect global events to Indian markets."""
+    """Uses deep reasoning to find economic meaning, not just keywords."""
     prompt = f"""
-    Role: Senior Financial Analyst (Indian Markets)
-    Analyze this headline: "{headline}"
+    Role: Senior Financial Analyst
+    Analyze the economic impact of this headline for Indian Markets/Economy.
+    Headline: "{headline}"
     
-    1. Does it affect Indian Economy/Nifty/Sensex or Global Macro (Oil/Fed/Gold)?
+    1. Does this affect Nifty/Sensex, Global Oil, Fed Rates, or Indian Sectors?
     2. Determine direction: BULLISH (Positive) or BEARISH (Negative).
     3. Determine impact: HIGH, MEDIUM, or LOW.
     
@@ -38,30 +38,35 @@ def analyze_impact_with_ai(headline):
 
 @st.fragment(run_every=60)
 def news_dashboard():
+    # Direct sitemaps for the fastest possible 'Live' detection
     sources = {
         "Moneycontrol": "https://www.moneycontrol.com/news/news-sitemap.xml",
         "Economic Times": "https://economictimes.indiatimes.com/sitemap_news.xml"
     }
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0'}
     found_any = False
 
-    with st.expander("🔍 Scraper Activity Log", expanded=False):
+    # Expanding this will show you exactly what the scraper is reading
+    with st.expander("🔍 Real-Time Scraper Activity Log", expanded=True):
         for provider, url in sources.items():
             try:
                 r = requests.get(url, headers=headers, timeout=10)
-                # Parse as XML specifically
+                # Parse as XML specifically to handle namespaces correctly
                 soup = BeautifulSoup(r.content, 'xml')
                 
-                # Search specifically for tags with or without namespaces
+                # Search for tags with or without 'news:' prefix
                 for entry in soup.find_all('url')[:20]:
                     news_tag = entry.find(['news:news', 'news'])
                     if not news_tag: continue
                     
                     title_tag = news_tag.find(['news:title', 'title'])
+                    if not title_tag: continue
+                    
                     title = title_tag.text.strip()
                     link = entry.find('loc').text
                     
-                    st.write(f"Scanning {provider}: {title[:60]}...")
+                    # This ensures you see the scraper working
+                    st.write(f"Reading {provider}: {title[:75]}...")
 
                     if title not in st.session_state.seen_headlines:
                         analysis = analyze_impact_with_ai(title)
@@ -70,39 +75,45 @@ def news_dashboard():
                             found_any = True
                             st.session_state.seen_headlines.add(title)
                             
-                            # UI Rendering
+                            # Card Display logic
                             color = "#28a745" if analysis["direction"] == "bullish" else "#dc3545"
                             st.markdown(f"""
-                                <div style="border-left: 10px solid {color}; padding: 15px; background: #161b22; margin-bottom: 10px; border-radius: 8px;">
-                                    <div style="display: flex; justify-content: space-between;">
-                                        <span style="background:{color}; color:white; padding:2px 8px; border-radius:4px; font-weight:bold; font-size:10px;">
+                                <div style="border-left: 10px solid {color}; padding: 15px; background: #161b22; margin-bottom: 12px; border-radius: 8px;">
+                                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                        <span style="background:{color}; color:white; padding:2px 8px; border-radius:4px; font-weight:bold; font-size:11px;">
                                             {analysis['impact']} {analysis['direction'].upper()}
                                         </span>
-                                        <small style="color:gray;">{provider}</small>
+                                        <small style="color:#8b949e;">{provider}</small>
                                     </div>
-                                    <h4 style="margin-top:10px; color:white;">{title}</h4>
-                                    <p style="color:#8b949e; font-size:13px; font-style:italic;">{analysis['reason']}</p>
+                                    <h3 style="color: white; margin: 0; font-size: 1.1rem;">{title}</h3>
+                                    <p style="color:#8b949e; font-size:13px; font-style:italic; margin-top: 8px;">
+                                        <strong>Analysis:</strong> {analysis['reason']}
+                                    </p>
+                                    <a href="{link}" target="_blank" style="color: #58a6ff; text-decoration: none; font-size: 13px;">View Full Story →</a>
                                 </div>
                             """, unsafe_allow_html=True)
-            except Exception:
-                # Use st.write inside fragments instead of st.toast/sidebar to avoid crashes
-                st.write(f"⚠️ {provider} connection error.")
+            except Exception as e:
+                # Use st.write inside fragments instead of st.toast/sidebar to prevent crashes
+                st.write(f"⚠️ Connection glitch with {provider}")
 
     if not found_any and len(st.session_state.seen_headlines) == 0:
-        st.info("Scanner Active. Waiting for market-shaking news...")
+        st.info("Scanner is active. Monitoring global & domestic sitemaps for impact...")
 
-# --- MAIN UI ---
+# --- MAIN UI SETUP ---
 st.set_page_config(page_title="AI Market Monitor", layout="wide")
 st.title("🏛️ AI High-Impact Market Monitor")
-st.caption(f"Last Scan: {datetime.now().strftime('%H:%M:%S')}")
+st.caption(f"System Live • Last Refresh: {datetime.now().strftime('%H:%M:%S')}")
 
 if 'seen_headlines' not in st.session_state:
     st.session_state.seen_headlines = set()
 
+# Sidebar is now kept static to prevent Fragment crashes
 with st.sidebar:
-    st.header("Settings")
-    if st.button("Reset Scanner"):
+    st.header("Scanner Settings")
+    st.write("Real-time Economy & Global Macro Feed")
+    if st.button("Reset Scanner & Clear Cache"):
         st.session_state.seen_headlines = set()
         st.rerun()
 
+# Run the fragment
 news_dashboard()
