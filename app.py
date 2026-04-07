@@ -93,17 +93,19 @@ def news_dashboard():
                 # Grabbing the 20 most recent URLs
                 for entry in soup.find_all('url')[:20]:
             try:
-                # 1. REPAIR: Flexible tag finding (Fixes empty titles)
+                # This entire block MUST be indented further than the 'try'
                 news_tag = entry.find(['news:news', 'news'])
-                if not news_tag: continue
+                if not news_tag: 
+                    continue
                 
                 title_tag = news_tag.find(['news:title', 'title'])
-                if not title_tag: continue
+                if not title_tag: 
+                    continue
                 
                 title = title_tag.text.strip()
                 link = entry.find('loc').text
                 
-                # 2. REPAIR: Add website name to log as requested
+                # Show the source next to the headline in the debug log
                 st.write(f"[{provider}] Scanning: {title[:70]}...")
 
                 if title not in st.session_state.seen_headlines:
@@ -112,12 +114,21 @@ def news_dashboard():
                     if analysis.get("significant"):
                         found_any = True
                         st.session_state.seen_headlines.add(title)
-                        # ... (your existing st.markdown code for the cards) ...
+                        
+                        # Determine color and impact logic
+                        direction = analysis.get("direction", "neutral")
+                        color = "#28a745" if direction == "bullish" else "#dc3545" if direction == "bearish" else "#8b949e"
+                        
+                        st.markdown(f"""
+                            <div style="border-left: 10px solid {color}; padding: 15px; background: #161b22; margin-bottom: 10px; border-radius: 8px;">
+                                <h4 style="margin:0; color:white;">{title}</h4>
+                                <p style="color:{color}; font-size:12px; margin-top:5px;">{analysis.get('reason')}</p>
+                            </div>
+                        """, unsafe_allow_html=True)
 
             except Exception as e:
-                # 3. REPAIR: Remove st.toast (Fixes the silent crash/stuck timer)
-                # We use st.write inside the expander instead.
-                st.write(f"⚠️ {provider} scan hiccup: {str(e)[:50]}")
+                # Local log instead of st.toast to prevent fragment crashes
+                st.write(f"⚠️ [{provider}] Scan error: {str(e)[:50]}")
 
     if not found_any and len(st.session_state.seen_headlines) == 0:
         st.info("Scanner is warming up. No high-impact events identified in current batch.")
