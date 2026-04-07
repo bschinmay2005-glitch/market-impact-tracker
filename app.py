@@ -6,16 +6,11 @@ import google.generativeai as genai
 from datetime import datetime
 
 # --- CRITICAL CONFIG ---
-# Replace with your actual Gemini API Key
 genai.configure(api_key="YOUR_GEMINI_API_KEY")
 ai_model = genai.GenerativeModel('gemini-1.5-flash')
 NTFY_TOPIC = "chinmay_market_shaker_2026"
 
 def analyze_impact_with_ai(headline):
-    """
-    The 'Brain': Evaluates Global/Domestic news for impact on India.
-    Does not use keywords; uses financial reasoning.
-    """
     prompt = f"""
     Role: Senior Financial Analyst (Indian Markets)
     Task: Analyze the economic impact of this headline.
@@ -37,7 +32,6 @@ def analyze_impact_with_ai(headline):
         return {"significant": False}
 
 def send_ntfy_push(title, link, analysis):
-    """Sends high-priority mobile alerts."""
     priority = "5" if analysis.get("impact_level") == "HIGH" else "3"
     tag = "rotating_light" if analysis.get("direction") == "bearish" else "rocket"
     try:
@@ -83,57 +77,55 @@ def news_dashboard():
     
     found_any = False
     
-    # This expander will now show: [Source] News Title...
     with st.expander("🔍 Scraper Live Feed (Debug)", expanded=True):
         for provider, url in sources.items():
             try:
                 r = requests.get(url, headers=headers, timeout=10)
                 soup = BeautifulSoup(r.content, 'xml')
                 
-                # Grabbing the 20 most recent URLs
-                for entry in soup.find_all('url')[:20]: # Line 94
-            try: # Line 95 (Ensure this is indented 8 spaces from the left)
-                # EVERYTHING BELOW MUST BE INDENTED FURTHER (12 spaces)
-                news_tag = entry.find(['news:news', 'news'])
-                if not news_tag: 
-                    continue
-                
-                title_tag = news_tag.find(['news:title', 'title'])
-                if not title_tag: 
-                    continue
-                
-                title = title_tag.text.strip()
-                link = entry.find('loc').text
-                
-                # Show the source next to the headline in the debug log
-                st.write(f"[{provider}] Scanning: {title[:75]}...")
-
-                if title not in st.session_state.seen_headlines:
-                    analysis = analyze_impact_with_ai(title)
-                    
-                    if analysis.get("significant"):
-                        found_any = True
-                        st.session_state.seen_headlines.add(title)
+                # LOOP START
+                for entry in soup.find_all('url')[:20]:
+                    try: # This is the 'try' that was causing the IndentationError
+                        news_tag = entry.find(['news:news', 'news'])
+                        if not news_tag: 
+                            continue
                         
-                        # Use the AI's logic to color the news
-                        direction = analysis.get("direction", "neutral")
-                        color = "#28a745" if direction == "bullish" else "#dc3545" if direction == "bearish" else "#8b949e"
+                        title_tag = news_tag.find(['news:title', 'title'])
+                        if not title_tag: 
+                            continue
                         
-                        st.markdown(f"""
-                            <div style="border-left: 10px solid {color}; padding: 15px; background: #161b22; margin-bottom: 12px; border-radius: 8px;">
-                                <h4 style="margin:0; color:white;">{title}</h4>
-                                <p style="color:{color}; font-size:13px; margin-top:8px;">{analysis.get('reason')}</p>
-                            </div>
-                        """, unsafe_allow_html=True)
+                        title = title_tag.text.strip()
+                        link = entry.find('loc').text
+                        
+                        st.write(f"[{provider}] Scanning: {title[:75]}...")
 
-            except Exception as e:
-                # Local log instead of st.toast to keep the loop alive
-                st.write(f"⚠️ [{provider}] Error: {str(e)[:50]}...")
+                        if title not in st.session_state.seen_headlines:
+                            analysis = analyze_impact_with_ai(title)
+                            
+                            if analysis.get("significant"):
+                                found_any = True
+                                st.session_state.seen_headlines.add(title)
+                                send_ntfy_push(title, link, analysis)
+                                
+                                direction = analysis.get("direction", "neutral")
+                                color = "#28a745" if direction == "bullish" else "#dc3545" if direction == "bearish" else "#8b949e"
+                                
+                                st.markdown(f"""
+                                    <div style="border-left: 10px solid {color}; padding: 15px; background: #161b22; margin-bottom: 12px; border-radius: 8px;">
+                                        <h4 style="margin:0; color:white;">{title}</h4>
+                                        <p style="color:{color}; font-size:13px; margin-top:8px;"><b>{analysis.get('impact_level')} IMPACT:</b> {analysis.get('reason')}</p>
+                                    </div>
+                                """, unsafe_allow_html=True)
+                    except Exception as inner_e:
+                        continue # Skip individual bad headlines
+
+            except Exception as outer_e:
+                st.write(f"⚠️ [{provider}] Connection Error: {str(outer_e)[:50]}...")
 
     if not found_any and len(st.session_state.seen_headlines) == 0:
         st.info("Scanner is warming up. No high-impact events identified in current batch.")
 
-# --- SIDEBAR (Static) ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.header("Admin")
     if st.button("Clear Cache & Force Re-scan"):
