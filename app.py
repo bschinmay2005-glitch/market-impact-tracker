@@ -1,151 +1,125 @@
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
-import json
-import google.generativeai as genai
+import pandas as pd
 from datetime import datetime
-import re
 
-# --- 1. CONFIGURATION ---
-GEMINI_KEY = "YOUR_ACTUAL_GEMINI_API_KEY" 
-NTFY_TOPIC = "chinmay_market_shaker_2026"
+# --- CONFIGURATION ---
+NTFY_TOPIC = "chinmay_market_shaker_2026" 
 
-genai.configure(api_key=GEMINI_KEY)
+BULLISH_WORDS = ["SURGE", "JUMP", "PROFIT", "RECORDS", "GROWTH", "ACQUIRES", "BULLISH", "UP", "GAINS", "RECOVERY", "STIMULUS", "DIVIDEND"]
+BEARISH_WORDS = ["CRASH", "PLUNGE", "LOSS", "DEBT", "FALL", "SLUMP", "BEARISH", "DOWN", "WAR", "SANCTION", "INFLATION", "DEFAULT", "LAYOFF"]
+MARKET_ENTITIES = ["RBI", "NIFTY", "SENSEX", "FED", "HDFC", "RELIANCE", "ADANI", "TATA", "SEBI", "IPO", "MARKET", "STOCK"]
 
-ai_model = genai.GenerativeModel(
-    model_name='gemini-1.5-flash',
-    generation_config={"response_mime_type": "application/json"},
-    system_instruction=(
-        "You are a Tier-1 Hedge Fund Analyst. Filter news for Indian Traders. "
-        "STRICT RULE: Only accept GDP, Inflation, RBI, Fed, Corporate Earnings, M&A, or Geopolitics. "
-        "IGNORE: Sports, general politics, and lifestyle. "
-        "Return ONLY JSON: {'significant': bool, 'direction': 'bullish'|'bearish'|'neutral', 'impact_level': 'HIGH'|'MEDIUM'|'LOW', 'reason': 'str'}"
-    )
-)
-
-# --- 2. SESSION STATE MANAGEMENT ---
-if 'market_log' not in st.session_state:
-    st.session_state.market_log = [] # This stores our "Display Feed"
-if 'processed_urls' not in st.session_state:
-    st.session_state.processed_urls = set() # This prevents duplicate AI calls
-
-# --- 3. THE INTELLIGENCE ENGINE ---
-def analyze_impact_with_ai(headline):
+# --- NOTIFICATION FUNCTION (CLEANED) ---
+def send_ntfy_push(headline, link, impact_type):
+    # Emojis in Title cause the latin-1 error. Use plain text here.
+    title_text = "Market Impact: Positive" if impact_type == "bullish" else "Market Impact: Negative" if impact_type == "bearish" else "Market News Alert"
+    
+    # Emojis are safe in Tags
+    tag_map = {"bullish": "rocket", "bearish": "chart_with_downwards_trend", "neutral": "newspaper"}
+    
     try:
-        response = ai_model.generate_content(f"Analyze impact: {headline}")
-        match = re.search(r'\{.*\}', response.text, re.DOTALL)
-        if match:
-            return json.loads(match.group())
-        return {"significant": False}
+        requests.post(
+            f"https://ntfy.sh/{NTFY_TOPIC}",
+            data=headline.encode('utf-8'),
+            headers={
+                "Title": title_text,
+                "Click": link,
+                "Priority": "4", 
+                "Tags": tag_map.get(impact_type, "newspaper")
+            },
+            timeout=5
+        )
     except:
-        return {"significant": False}
+        pass
 
-# --- 4. THE SCANNER (LATEST & HISTORICAL) ---
+# --- UI SETUP ---
+st.set_page_config(page_title="Market Impact Tracker", layout="wide")
+st.markdown("""
+    <style>
+    .main { background-color: #0e1117; color: #ffffff; }
+    .news-card { padding: 20px; border-radius: 12px; margin-bottom: 20px; background-color: #161b22; border: 1px solid #30363d; min-height: 150px; }
+    .bullish-card { border-left: 8px solid #28a745; border-top: 1px solid #28a745; }
+    .bearish-card { border-left: 8px solid #dc3545; border-top: 1px solid #dc3545; }
+    .neutral-card { border-left: 8px solid #8899ac; }
+    .badge-green { background-color: #28a745; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 0.7rem; }
+    .badge-red { background-color: #dc3545; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 0.7rem; }
+    .badge-gray { background-color: #444c56; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 0.7rem; }
+    .time-stamp { color: #8899ac; font-size: 0.8rem; margin-left: 10px; }
+    </style>
+    """, unsafe_allow_html=True)
+
+st.title("🏛️ Live Market Archive")
+
+if 'seen_headlines' not in st.session_state:
+    st.session_state.seen_headlines = set()
+
 @st.fragment(run_every=60)
-def scanner_engine():
+def news_dashboard():
     sources = {
         "Moneycontrol": "https://www.moneycontrol.com/news/news-sitemap.xml",
-        "Economic Times": "https://economictimes.indiatimes.com/etstatic/sitemaps/et/news/sitemap-today.xml"
+        "Economic Times": "https://economictimes.indiatimes.com/sitemap_news.xml"
     }
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    
-    with st.status("Deep Scanning for Historical & Live Signals...", expanded=False) as status:
-        for provider, url in sources.items():
-            try:
-                r = requests.get(url, headers=headers, timeout=12)
-                soup = BeautifulSoup(r.content, 'xml')
-                # Grab the last 20 URLs to ensure we find at least 10 relevant ones
-                urls = soup.find_all('url')[:20] 
-                
-                for item in urls:
-                    loc = item.find('loc').text
-                    title_tag = item.find(['news:title', 'title'])
-                    title = title_tag.text.strip() if title_tag else ""
-                    
-                    if loc not in st.session_state.processed_urls and title:
-                        st.session_state.processed_urls.add(loc)
-                        analysis = analyze_impact_with_ai(title)
-                        
-                        if analysis.get("significant"):
-                            entry = {
-                                "time": datetime.now().strftime("%H:%M:%S"),
-                                "title": title,
-                                "source": provider,
-                                "link": loc,
-                                "analysis": analysis
-                            }
-                            # Always put newest at the top
-                            st.session_state.market_log.insert(0, entry)
-            except:
-                continue
-        status.update(label="Sync Complete", state="complete")
-
-    # --- DISPLAY FEED (Limited to top 15 items) ---
-    if not st.session_state.market_log:
-        st.info("System Standby: No significant market-moving news found in recent history.")
-    else:
-        # We display the top 15 (which includes the 10 historical + any new upcoming ones)
-        for item in st.session_state.market_log[:15]: 
-            a = item['analysis']
-            direction = a.get("direction", "neutral").lower()
-            impact = a.get("impact_level", "LOW").upper()
+    found_any = False
+    for provider, url in sources.items():
+        try:
+            r = requests.get(url, headers=headers, timeout=10)
+            soup = BeautifulSoup(r.content, 'xml')
             
-            # Dynamic Styling
-            if direction == "bullish":
-                color, bg = "#28a745", "rgba(40, 167, 69, 0.1)"
-            elif direction == "bearish":
-                color, bg = "#dc3545", "rgba(220, 53, 69, 0.1)"
-            else:
-                color, bg = "#8b949e", "rgba(139, 148, 158, 0.05)"
+            for entry in soup.find_all('url')[:30]: 
+                news_tag = entry.find('news:news')
+                if not news_tag: continue
+                
+                title = news_tag.find('news:title').text
+                link = entry.find('loc').text
+                pub_date = news_tag.find('news:publication_date').text
+                img_url = entry.find('image:loc').text if entry.find('image:loc') else None
+                
+                # Time Logic
+                dt = datetime.fromisoformat(pub_date.replace('Z', '+00:00'))
+                diff = datetime.now(dt.tzinfo) - dt
+                s = diff.total_seconds()
+                clean_time = f"{int(s//60)}m ago" if s < 3600 else f"{int(s//3600)}h ago" if s < 86400 else dt.strftime("%b %d")
 
-            st.markdown(f"""
-                <div style="border-left: 10px solid {color}; background-color: {bg}; padding: 20px; border-radius: 10px; margin-bottom: 12px; border: 1px solid {color}33;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <span style="color: {color}; font-weight: bold; letter-spacing: 1px; font-size: 13px;">
-                            [{impact} IMPACT]
-                        </span>
-                        <span style="color: #8b949e; font-size: 11px;">
-                            🕒 {item['time']} | 🏛️ SOURCE: {item['source']}
-                        </span>
-                    </div>
-                    <h3 style="margin: 0 0 10px 0; color: white; font-size: 1.2rem; line-height: 1.4;">{item['title']}</h3>
-                    <p style="color: #c9d1d9; font-size: 14px; margin-bottom: 10px;">
-                        <b>AI Assessment:</b> {a.get('reason')}
-                    </p>
-                    <div style="display: flex; gap: 20px; align-items: center;">
-                        <a href="{item['link']}" target="_blank" style="color: #58a6ff; text-decoration: none; font-size: 12px; font-weight: bold;">READ SOURCE ↗</a>
-                        <span style="color: {color}; font-size: 11px; font-weight: bold; background: {color}22; padding: 2px 8px; border-radius: 4px;">
-                            {direction.upper()}
-                        </span>
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
+                # --- NEW IMPACT DETECTION ---
+                title_up = title.upper()
+                is_bullish = any(word in title_up for word in BULLISH_WORDS)
+                is_bearish = any(word in title_up for word in BEARISH_WORDS)
+                has_entity = any(word in title_up for word in MARKET_ENTITIES)
 
-# --- 5. UI & TERMINAL ---
-st.set_page_config(page_title="Deep Market Intelligence", layout="wide")
-st.title("🏛️ Tier-1 Market Intelligence")
+                # Show it if it matches an entity OR a movement word
+                if has_entity or is_bullish or is_bearish:
+                    found_any = True
+                    impact_type = "bullish" if is_bullish else "bearish" if is_bearish else "neutral"
+                    
+                    if title not in st.session_state.seen_headlines:
+                        send_ntfy_push(title, link, impact_type)
+                        st.session_state.seen_headlines.add(title)
 
-with st.sidebar:
-    st.header("Control Terminal")
-    if st.button("🚀 Run Manual Test Alert"):
-        test_data = {
-            "time": datetime.now().strftime("%H:%M:%S"),
-            "title": "Indian GDP Growth exceeds expectations at 8.4%; Nifty futures surge",
-            "source": "INTERNAL TESTER",
-            "link": "#",
-            "analysis": {"significant": True, "direction": "bullish", "impact_level": "HIGH", "reason": "Higher GDP growth signals strong domestic consumption and attracts global FII flows."}
-        }
-        st.session_state.market_log.insert(0, test_data)
-        st.rerun()
+                    # UI Styling
+                    card_style = "bullish-card" if impact_type == "bullish" else "bearish-card" if impact_type == "bearish" else "neutral-card"
+                    badge = '<span class="badge-green">POSITIVE</span>' if impact_type == "bullish" else '<span class="badge-red">NEGATIVE</span>' if impact_type == "bearish" else '<span class="badge-gray">MARKET NEWS</span>'
 
-    if st.button("Clear & Restart Scanner"):
-        st.session_state.market_log = []
-        st.session_state.processed_urls = set()
-        st.rerun()
-    
-    st.divider()
-    st.info("System is deep-scanning the last 40 headlines across Moneycontrol & ET to find the 10 most relevant starting points.")
+                    st.markdown(f'''
+                        <div class="news-card {card_style}">
+                            <div style="display: flex; gap: 20px;">
+                                <div style="flex: 1;"><img src="{img_url if img_url else "https://via.placeholder.com/150"}" style="width: 100%; border-radius: 8px;"></div>
+                                <div style="flex: 3;">
+                                    {badge} <span class="time-stamp">{provider} • {clean_time}</span>
+                                    <h3 style="margin-top: 10px; color: white;">{title}</h3>
+                                    <a href="{link}" target="_blank" style="text-decoration: none;"><button style="background: #30363d; color: white; border: 1px solid #8899ac; padding: 5px 15px; border-radius: 5px; cursor: pointer;">Read Full Story</button></a>
+                                </div>
+                            </div>
+                        </div>
+                    ''', unsafe_allow_html=True)
 
-# EXECUTE SCANNER
-scanner_engine()
+        except Exception as e:
+            continue
+            
+    if not found_any:
+        st.info("Searching for market-moving updates...")
+
+news_dashboard()
